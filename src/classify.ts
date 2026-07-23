@@ -147,9 +147,13 @@ function leesTekstVeld(bron: Record<string, unknown>, ...namen: string[]): strin
 export function mailNaarClassificatieInvoer(mail: InkomendeMail): MailVoorClassificatie {
   const bron = alsObject(mail) ?? {};
   return {
-    van: leesTekstVeld(bron, "van", "from", "afzender", "vanAdres"),
+    van: leesTekstVeld(bron, "vanAdres", "van", "from", "afzender"),
     onderwerp: leesTekstVeld(bron, "onderwerp", "subject", "titel"),
-    tekst: leesTekstVeld(bron, "tekst", "body", "bericht", "inhoud", "text"),
+    // InkomendeMail draagt de mailtekst in tekstSchoon (citaat en handtekening
+    // eraf) met tekstVolledig als terugval. Die twee horen VOORAAN: zonder hen
+    // kreeg het model een lege body en classificeerde het elke mail als
+    // mens_nodig met vertrouwen 0,20, waardoor alles escaleerde.
+    tekst: leesTekstVeld(bron, "tekstSchoon", "tekstVolledig", "tekst", "body", "bericht", "inhoud", "text"),
     ontvangenOp: leesTekstVeld(bron, "ontvangenOp", "ontvangenAt", "datum", "date") || undefined,
   };
 }
