@@ -13,7 +13,7 @@ import { config } from "./config.js";
 import { log } from "./log.js";
 import { parseMail } from "./parse.js";
 import { Postbus } from "./imap.js";
-import { matchOrder, type MatchResultaat } from "./match.js";
+import { geenMatch, matchOrder, type MatchResultaat } from "./match.js";
 import { ApiFout } from "./api.js";
 import { schrijfLog } from "./api.js";
 import {
@@ -25,12 +25,16 @@ import {
   registreerAntwoord,
   magRefunderen,
   registreerRefund,
+  orderVraagGesteld,
+  registreerOrderVraag,
   type CapUitkomst,
 } from "./guards.js";
 import {
   ESCALATIE_INTENTS,
   NA_INKOOP_STATUSSEN,
+  ORDER_GEBONDEN_INTENTS,
   REFUNDBARE_STATUSSEN,
+  naarLocale,
   type ActieOpdracht,
   type AntwoordOpdracht,
   type Classificatie,
@@ -44,6 +48,9 @@ import {
   type OpstelInvoer,
   type OrderFeiten,
 } from "./types.js";
+import { drempelVoor, isTaal, type BotIntent, type BotTaal, type Drempels } from "./prompts/classificatie.js";
+import { merkNaam } from "./prompts/opstellen.js";
+import { ONTVANGST_ONDERWERP, ONTVANGST_TEKST, kiesTekst, metOndertekening } from "./teksten.js";
 
 // De vier functies van de andere bouwers. Relatieve imports eindigen op .js
 // (ESM met NodeNext), ook al heten de bronbestanden .ts.
@@ -143,6 +150,106 @@ function bouwEscalatie(
   };
 }
 
+// De twee vertrouwensdrempels uit config, in het formaat dat classify en
+// drempelVoor verwachten. Geld en recht streng, informatie soepel.
+const DREMPELS: Drempels = {
+  streng: config.vertrouwenDrempel,
+  info: config.vertrouwenDrempelInfo,
+};
+
+// ---------------------------------------------------------------------------
+// Escaleren met een ontvangstbevestiging voor de klant
+// ---------------------------------------------------------------------------
+
+// Redenen waarbij de klant BEWUST niets hoort:
+//   - klacht_juridisch: bij een advocaat, chargeback of dreiging schrijft een
+//     mens de eerste zin, ook de bevestigende (besluit Sabur 24-07).
+//   - verzending_uit en cap_bereikt: dat zijn juist de noodremmen op uitgaande
+//     post. Er dan alsnog een mail doorheen duwen ondermijnt de rem.
+//   - identiteit_mismatch: die klant krijgt al een echt antwoord.
+const GEEN_BEVESTIGING: ReadonlySet<EscalatieReden> = new Set<EscalatieReden>([
+  "intent_klacht_juridisch",
+  "verzending_uit",
+  "cap_bereikt",
+  "identiteit_mismatch",
+]);
+
+/** De taal van de klant, met terugval op Engels. */
+function taalVan(classificatie: Classificatie | null): BotTaal {
+  const ruw = classificatie?.taal;
+  return isTaal(ruw) ? ruw : "en";
+}
+
+/**
+ * Stuurt de escalatie naar Sabur en, als dat mag, een korte ontvangstbevestiging
+ * naar de klant. Zonder die bevestiging blijft het voor de klant stil tot Sabur
+ * zelf antwoordt, en dat was voor 24-07 de stille kant van elke escalatie.
+ *
+ * De bevestiging is een vaste tekst per taal: geen modelaanroep, dus geen
+ * kosten, geen injectie-oppervlak en geen tweede ding dat kan mislukken. Faalt
+ * het versturen toch, dan wordt dat alleen gelogd: een escalatie mag nooit
+ * afhangen van een bevestigingsmail.
+ *
+ * Geeft terug of de klant iets gehoord heeft, voor de logregel.
+ */
+async function escaleerNaarSabur(
+  mail: InkomendeMail,
+  esc: EscalatieOpdracht,
+  classificatie: Classificatie | null,
+  regel?: MailBotLogRegel
+): Promise<boolean> {
+  await voerActieUit(esc);
+
+  if (!config.schakelaars.ontvangstbevestiging) return false;
+  if (GEEN_BEVESTIGING.has(esc.reden)) return false;
+  // Geen classificatie betekent dat we de taal niet kennen; dan liever niets
+  // sturen dan een klant in de verkeerde taal aanschrijven.
+  if (!classificatie) return false;
+  if (!magVersturen()) return false;
+
+  // Stil toetsen: raakt de cap dicht te zitten, dan sturen we niets, maar we
+  // mogen de eenmalige cap-melding aan Sabur niet opbranden met een
+  // bevestigingsmail. Die melding hoort bij het echte antwoordpad.
+  const cap = magAntwoorden(mail, { stil: true });
+  if (cap.geblokkeerd) return false;
+
+  const taal = taalVan(classificatie);
+  const tekst = metOndertekening(
+    kiesTekst(ONTVANGST_TEKST, taal),
+    config.afzenderNaam,
+    merkNaam()
+  );
+  const onderwerp = mail.onderwerp?.trim()
+    ? /^re:/i.test(mail.onderwerp.trim())
+      ? mail.onderwerp.trim()
+      : `Re: ${mail.onderwerp.trim()}`
+    : kiesTekst(ONTVANGST_ONDERWERP, taal);
+
+  const opdracht = bouwAntwoordOpdracht(
+    mail,
+    { onderwerp, tekst, taal: naarLocale(taal) },
+    esc.orderToken
+  );
+
+  try {
+    const res = await voerActieUit(opdracht);
+    if (res.ok && res.uitgevoerd) {
+      registreerAntwoord(mail);
+      if (regel) {
+        regel.melding = regel.melding
+          ? `${regel.melding}; ontvangstbevestiging verstuurd`
+          : "ontvangstbevestiging verstuurd";
+      }
+      log.info(`Ontvangstbevestiging (${taal}) verstuurd aan ${mail.vanAdres}`);
+      return true;
+    }
+    log.warn(`Ontvangstbevestiging niet verstuurd aan ${mail.vanAdres}: ${res.fout ?? "onbekend"}`);
+  } catch (err) {
+    log.warn(`Ontvangstbevestiging mislukt aan ${mail.vanAdres}`, err);
+  }
+  return false;
+}
+
 // Basis-logregel met de gemeenschappelijke velden ingevuld.
 function basisLog(
   mail: InkomendeMail,
@@ -234,7 +341,7 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
   // ---- 2. Classificeren (LLM 1) ----
   let classificatie: Classificatie;
   try {
-    classificatie = await classificeer(mail);
+    classificatie = await classificeer(mail, DREMPELS);
   } catch (err) {
     // Classificatie mislukt: als mens_nodig behandelen en escaleren zonder concept.
     log.warn(`Classificatie mislukt voor ${mail.botMailId}, escaleren`, err);
@@ -253,12 +360,14 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
     return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
   }
 
-  // Vertrouwen onder de drempel gaat automatisch naar mens_nodig (spec sectie 8).
+  // Vertrouwen onder de drempel gaat naar mens_nodig. De drempel hangt af van
+  // wat er op het spel staat: 0,75 voor geld en recht, 0,45 voor informatie
+  // (drempelVoor). classify.ts past hetzelfde vangnet al toe; deze tweede
+  // controle vangt een classificatie af die van elders komt.
   let intent: Intent = classificatie.intent;
-  if (classificatie.vertrouwen < config.vertrouwenDrempel) {
-    log.info(
-      `Vertrouwen ${classificatie.vertrouwen.toFixed(2)} < ${config.vertrouwenDrempel}, ${intent} -> mens_nodig`
-    );
+  const drempel = drempelVoor(intent as BotIntent, DREMPELS);
+  if (intent !== "spam_overig" && classificatie.vertrouwen < drempel) {
+    log.info(`Vertrouwen ${classificatie.vertrouwen.toFixed(2)} < ${drempel} voor ${intent}, dus mens_nodig`);
     intent = "mens_nodig";
   }
 
@@ -284,7 +393,7 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
         // Een juridische klacht of factuurvraag mag nooit blijven hangen omdat
         // de order-API even plat ligt: escaleer zonder ordercontext.
         log.warn(`Order-lookup faalde, escaleer toch (${intent})`, err);
-        match = { order: null, wijze: "geen", aantalGevonden: 0, identiteitMismatch: false };
+        match = geenMatch(null);
       } else {
         // Autonome intent zonder order kunnen we niet veilig afhandelen: uitstellen.
         throw new UitstelFout(`order-API onbereikbaar bij ${mail.botMailId}: ${err.message}`);
@@ -309,24 +418,18 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
     return await verwerkIdentiteitMismatch(mail, classificatie, order);
   }
 
-  // ---- 4c. Geen order = mens_nodig (spec sectie 4: nooit gokken) ----
+  // ---- 4c. Geen order gevonden ----
+  // Tot 24-07 ging ELKE mail zonder gevonden bestelling meteen naar Sabur, ook
+  // een algemene vraag die prima uit de kennisbank te beantwoorden was. Dat was
+  // de grootste bron van onnodige escalaties. Nu splitsen we:
+  //   - niet-ordergebonden vraag (product_vraag) -> gewoon zelf beantwoorden;
+  //   - ordergebonden vraag -> eerst zelf om ordernummer of kenteken vragen.
   // Vanaf hier narrowt de vergelijking order naar OrderFeiten voor de rest.
   if (order === null) {
-    const esc = bouwEscalatie(mail, {
-      reden: "geen_order",
-      toelichting: "Geen order gevonden op VH-nummer, e-mailadres of kenteken. Handmatig beoordelen.",
-      intent: classificatie.intent,
-      vertrouwen: classificatie.vertrouwen,
-    });
-    await voerActieUit(esc);
-    const regel = basisLog(mail, classificatie, null);
-    regel.actie = "escalatie_sturen";
-    regel.escalatie = true;
-    regel.escalatieReden = "geen_order";
-    regel.bestemming = config.mappen.escalatie;
-    await schrijfLog(regel);
-    log.info(`Geen order gevonden, geescaleerd: ${mail.vanAdres}`);
-    return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
+    if (!(ORDER_GEBONDEN_INTENTS as readonly Intent[]).includes(intent)) {
+      return await verwerkAlgemeneVraag(mail, classificatie, intent);
+    }
+    return await verwerkOrderOnbekend(mail, classificatie, intent, match);
   }
 
   // ---- 5. Autonome afhandeling met geldige order en kloppende identiteit ----
@@ -418,9 +521,9 @@ async function escaleerIntent(
     vertrouwen: classificatie.vertrouwen,
     orderToken: order?.orderToken,
   });
-  await voerActieUit(esc);
 
   const regel = basisLog(mail, classificatie, order);
+  await escaleerNaarSabur(mail, esc, classificatie, regel);
   regel.actie = "escalatie_sturen";
   regel.escalatie = true;
   regel.escalatieReden = reden;
@@ -513,6 +616,92 @@ async function verwerkKlantAntwoordIntent(
   return await stelOpEnVerstuur(mail, classificatie, order, invoer);
 }
 
+// Algemene vraag zonder bestelling (product_vraag). Beantwoorden uit de
+// kennisbank, zonder een enkel ordergegeven, want dat hebben we niet. Dit is de
+// belangrijkste winst van 24-07: zulke mails gingen daarvoor allemaal naar Sabur.
+async function verwerkAlgemeneVraag(
+  mail: InkomendeMail,
+  classificatie: Classificatie,
+  intent: Intent
+): Promise<VerwerkUitkomst> {
+  const invoer: OpstelInvoer = {
+    mail,
+    classificatie,
+    order: null,
+    identiteitMismatch: false,
+    meerdereOrders: false,
+    voorgesteldeActie: "antwoord_sturen",
+    refundToegestaan: false,
+    naInkoop: false,
+    doel: "klant",
+    afzenderNaam: config.afzenderNaam,
+    magOrderVragen: true,
+  };
+  log.info(`Algemene vraag zonder bestelling (${intent}) van ${mail.vanAdres}, zelf beantwoorden`);
+  return await stelOpEnVerstuur(mail, classificatie, null, invoer);
+}
+
+// Ordergebonden vraag terwijl we de bestelling niet vinden. De bot vraagt zelf
+// om het ordernummer of het kenteken. Dat doet hij per gesprek een keer; daarna
+// heeft doorvragen geen zin meer en kijkt Sabur ernaar. Noemde de klant al een
+// VH-nummer dat niet bestaat, dan vragen we ook niet: dan klopt er iets anders
+// niet en moet een mens kijken.
+async function verwerkOrderOnbekend(
+  mail: InkomendeMail,
+  classificatie: Classificatie,
+  intent: Intent,
+  match: MatchResultaat
+): Promise<VerwerkUitkomst> {
+  const alGevraagd = orderVraagGesteld(mail);
+  const genoemdNummer = match.genoemdVhNummer;
+  const magVragen = config.schakelaars.zelfDoorvragen && !alGevraagd && !genoemdNummer;
+
+  if (!magVragen) {
+    const toelichting = genoemdNummer
+      ? `De klant noemt ordernummer ${genoemdNummer}, maar die bestelling bestaat niet in de database. Handmatig beoordelen.`
+      : alGevraagd
+        ? "In dit gesprek al een keer om het ordernummer of kenteken gevraagd en nog steeds geen match. Handmatig beoordelen."
+        : `Geen order gevonden op VH-nummer, e-mailadres of kenteken, en zelf doorvragen staat uit. Intent ${intent}.`;
+    const esc = bouwEscalatie(mail, {
+      reden: "geen_order",
+      toelichting,
+      intent: classificatie.intent,
+      vertrouwen: classificatie.vertrouwen,
+    });
+    const regel = basisLog(mail, classificatie, null);
+    await escaleerNaarSabur(mail, esc, classificatie, regel);
+    regel.actie = "escalatie_sturen";
+    regel.escalatie = true;
+    regel.escalatieReden = "geen_order";
+    regel.bestemming = config.mappen.escalatie;
+    await schrijfLog(regel);
+    log.info(`Geen order gevonden, geescaleerd: ${mail.vanAdres}`);
+    return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
+  }
+
+  const invoer: OpstelInvoer = {
+    mail,
+    classificatie,
+    order: null,
+    identiteitMismatch: false,
+    meerdereOrders: false,
+    voorgesteldeActie: "antwoord_sturen",
+    refundToegestaan: false,
+    naInkoop: false,
+    doel: "klant",
+    afzenderNaam: config.afzenderNaam,
+    magOrderVragen: true,
+  };
+  log.info(`Bestelling niet gevonden (${intent}), zelf om ordernummer vragen: ${mail.vanAdres}`);
+  const uitkomst = await stelOpEnVerstuur(mail, classificatie, null, invoer);
+  // Alleen tellen als de vraag echt de deur uit is; anders mag de volgende mail
+  // in deze thread het gewoon nog een keer proberen.
+  if (uitkomst.actie === "antwoord_sturen") {
+    registreerOrderVraag(mail);
+  }
+  return uitkomst;
+}
+
 // kenteken_fout: voor inkoop uitleg plus link naar zelf corrigeren; na inkoop
 // niets, escaleren met het foutNaInkoop-runbook (spec sectie 5).
 async function verwerkKentekenFout(
@@ -530,8 +719,8 @@ async function verwerkKentekenFout(
       vertrouwen: classificatie.vertrouwen,
       orderToken: order.orderToken,
     });
-    await voerActieUit(esc);
     const regel = basisLog(mail, classificatie, order);
+    await escaleerNaarSabur(mail, esc, classificatie, regel);
     regel.actie = "escalatie_sturen";
     regel.escalatie = true;
     regel.escalatieReden = "kenteken_fout_na_inkoop";
@@ -617,7 +806,7 @@ async function verwerkBewijsKwijt(
     vertrouwen: classificatie.vertrouwen,
     orderToken: order.orderToken,
   });
-  await voerActieUit(esc);
+  await escaleerNaarSabur(mail, esc, classificatie, regel);
   regel.actie = "escalatie_sturen";
   regel.escalatie = true;
   regel.escalatieReden = "actie_mislukt";
@@ -722,7 +911,7 @@ async function voerRefundUit(
       vertrouwen: classificatie.vertrouwen,
       orderToken: order.orderToken,
     });
-    await voerActieUit(esc);
+    await escaleerNaarSabur(mail, esc, classificatie, regel);
     regel.actie = "escalatie_sturen";
     regel.escalatie = true;
     regel.escalatieReden = "actie_mislukt";
@@ -778,7 +967,9 @@ async function voerRefundUit(
       vertrouwen: classificatie.vertrouwen,
       orderToken: order.orderToken,
     });
-    await voerActieUit(esc);
+    // De klant hoort wel dat zijn mail binnen is, maar de vaste tekst belooft
+    // niets over geld: wat er met de terugbetaling is gebeurd weet niemand nog.
+    await escaleerNaarSabur(mail, esc, classificatie, regel);
     regel.actie = "escalatie_sturen";
     regel.escalatie = true;
     regel.escalatieReden = "actie_onbekend";
@@ -808,7 +999,7 @@ async function voerRefundUit(
       vertrouwen: classificatie.vertrouwen,
       orderToken: order.orderToken,
     });
-    await voerActieUit(esc);
+    await escaleerNaarSabur(mail, esc, classificatie, regel);
     regel.actie = "escalatie_sturen";
     regel.escalatie = true;
     regel.escalatieReden = "status_niet_toegestaan";
@@ -856,10 +1047,12 @@ async function voerRefundUit(
 async function stelOpEnVerstuur(
   mail: InkomendeMail,
   classificatie: Classificatie,
-  order: OrderFeiten,
+  order: OrderFeiten | null,
   invoer: OpstelInvoer
 ): Promise<VerwerkUitkomst> {
   const regel = basisLog(mail, classificatie, order);
+  // Zonder bestelling is er niets om naar te verwijzen in de log en de melding.
+  const waarover = order ? order.orderToken : "een vraag zonder bestelling";
 
   let uit: { concept: Concept } | { afgekeurd: string };
   try {
@@ -877,16 +1070,16 @@ async function stelOpEnVerstuur(
       toelichting: `Concept afgekeurd door de controle (${uit.afgekeurd}). Handmatig beantwoorden.`,
       intent: classificatie.intent,
       vertrouwen: classificatie.vertrouwen,
-      orderToken: order.orderToken,
+      orderToken: order?.orderToken,
     });
-    await voerActieUit(esc);
+    await escaleerNaarSabur(mail, esc, classificatie, regel);
     regel.actie = "escalatie_sturen";
     regel.escalatie = true;
     regel.escalatieReden = "controle_afgekeurd";
     regel.bestemming = config.mappen.escalatie;
     regel.fout = uit.afgekeurd;
     await schrijfLog(regel);
-    log.warn(`Concept afgekeurd voor ${order.orderToken}: ${uit.afgekeurd}`);
+    log.warn(`Concept afgekeurd voor ${waarover}: ${uit.afgekeurd}`);
     return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
   }
 
@@ -900,7 +1093,7 @@ async function stelOpEnVerstuur(
     regel.verstuurdAt = new Date().toISOString();
     regel.bestemming = config.mappen.afgehandeld;
     await schrijfLog(regel);
-    log.info(`Antwoord verstuurd op ${order.orderToken} (${concept.taal})`);
+    log.info(`Antwoord verstuurd op ${waarover} (${concept.taal})`);
     return { bestemming: config.mappen.afgehandeld, actie: "antwoord_sturen" };
   }
 
@@ -912,11 +1105,11 @@ async function stelOpEnVerstuur(
     // SEND uit: escaleren met concept zodat Sabur het handmatig kan versturen.
     const esc = bouwEscalatie(mail, {
       reden: "verzending_uit",
-      toelichting: `MAILBOT_SEND staat uit. Concept-antwoord voor ${order.orderToken} handmatig versturen.`,
+      toelichting: `MAILBOT_SEND staat uit. Concept-antwoord voor ${waarover} handmatig versturen.`,
       concept,
       intent: classificatie.intent,
       vertrouwen: classificatie.vertrouwen,
-      orderToken: order.orderToken,
+      orderToken: order?.orderToken,
     });
     await voerActieUit(esc);
     regel.actie = "escalatie_sturen";
@@ -936,7 +1129,7 @@ async function stelOpEnVerstuur(
 async function capGeblokkeerd(
   mail: InkomendeMail,
   classificatie: Classificatie,
-  order: OrderFeiten,
+  order: OrderFeiten | null,
   cap: CapUitkomst,
   concept?: Concept
 ): Promise<VerwerkUitkomst> {
@@ -948,7 +1141,7 @@ async function capGeblokkeerd(
       concept,
       intent: classificatie.intent,
       vertrouwen: classificatie.vertrouwen,
-      orderToken: order.orderToken,
+      orderToken: order?.orderToken,
     });
     await voerActieUit(esc);
   }
@@ -975,13 +1168,13 @@ async function escaleerNaMislukking(
 ): Promise<VerwerkUitkomst> {
   const esc = bouwEscalatie(mail, {
     reden: "actie_mislukt",
-    toelichting: `Verwerking van ${order?.orderToken ?? "onbekende order"} mislukte (${fout}). Handmatig afhandelen.`,
+    toelichting: `Verwerking van ${order?.orderToken ?? "een mail zonder bestelling"} mislukte (${fout}). Handmatig afhandelen.`,
     concept,
     intent: classificatie.intent,
     vertrouwen: classificatie.vertrouwen,
     orderToken: order?.orderToken,
   });
-  await voerActieUit(esc);
+  await escaleerNaarSabur(mail, esc, classificatie, regel);
   regel.actie = "escalatie_sturen";
   regel.escalatie = true;
   regel.escalatieReden = "actie_mislukt";
@@ -1006,8 +1199,8 @@ async function escaleerAnnuleren(
     vertrouwen: classificatie.vertrouwen,
     orderToken: order.orderToken,
   });
-  await voerActieUit(esc);
   const regel = basisLog(mail, classificatie, order);
+  await escaleerNaarSabur(mail, esc, classificatie, regel);
   regel.actie = "escalatie_sturen";
   regel.escalatie = true;
   regel.escalatieReden = reden;

@@ -106,6 +106,33 @@ tail -f logs/mailbot-out.log     # of rechtstreeks de logbestanden
 
 Zet `LOG_DEBUG=1` in `.env` voor uitgebreide logging tijdens het inregelen.
 
+## Hoeveel de bot zelf afhandelt (wijziging 24-07)
+
+De opdracht was: zoveel mogelijk zelf doen, alleen escaleren als het echt niet
+anders kan. Vier knoppen bepalen dat gedrag.
+
+| Knop | Standaard | Wat het doet |
+|---|---|---|
+| `VERTROUWEN_DREMPEL` | `0.75` | Drempel voor geld en recht: annuleren, betaling, factuur, klacht, kenteken. Blijft streng. |
+| `VERTROUWEN_DREMPEL_INFO` | `0.45` | Drempel voor informatie: status, uitleg, bewijs kwijt. Daar wordt niets onomkeerbaars gedaan. |
+| `MAILBOT_ZELF_DOORVRAGEN` | `1` | Vindt de bot de bestelling niet, dan vraagt hij zelf om ordernummer of kenteken. Een keer per gesprek; daarna gaat de mail alsnog naar Sabur. |
+| `MAILBOT_ONTVANGSTBEVESTIGING` | `1` | Escaleert de bot toch, dan krijgt de klant een korte bevestiging in zijn eigen taal, zodat het niet stil blijft. |
+
+Wat er hoe dan ook naar Sabur gaat: factuur, betalingsproblemen, juridische
+mail, kentekenfout na inkoop, een refund die niet lukt, en elk concept dat door
+de controlelaag wordt afgekeurd. Bij juridische mail krijgt de klant bewust ook
+geen ontvangstbevestiging: daar schrijft een mens de eerste zin.
+
+Een algemene vraag zonder bestelling beantwoordt de bot voortaan zelf uit
+`src/prompts/kennis.ts`. Die kennisbank is de enige bron naast de databasefeiten;
+verandert er iets aan het aanbod of aan de voorwaarden, werk hem dan bij.
+
+Wil je zien wat de bot met het echte model doet zonder mail te versturen:
+
+```bash
+npx tsx test/proef-antwoorden.ts
+```
+
 ## Noodstop
 
 Er zijn drie niveaus, van zacht naar hard.

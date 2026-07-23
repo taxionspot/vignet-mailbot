@@ -150,6 +150,13 @@ interface CapState {
   perAfzender: Record<string, number[]>;
   /** Threadsleutel -> teller van botantwoorden in die thread. */
   perThread: Record<string, ThreadTeller>;
+  /**
+   * Threadsleutel -> hoe vaak de bot in die thread om een ordernummer of
+   * kenteken heeft gevraagd. Zonder deze teller zou de bot bij elke volgende
+   * mail opnieuw kunnen vragen en de klant in een lus zetten (besluit Sabur
+   * 24-07: eenmaal zelf doorvragen, daarna naar Sabur).
+   */
+  orderVraagPerThread: Record<string, ThreadTeller>;
 }
 
 const VENSTER_24U_MS = 24 * 60 * 60 * 1000;
@@ -180,6 +187,7 @@ function legeState(): CapState {
     capGemeld: {},
     perAfzender: {},
     perThread: {},
+    orderVraagPerThread: {},
   };
 }
 
@@ -198,6 +206,8 @@ function laadState(): CapState {
         capGemeld: geladen.capGemeld ?? {},
         perAfzender: geladen.perAfzender ?? {},
         perThread: geladen.perThread ?? {},
+        // Ontbreekt in state-bestanden van voor 24-07: dan gewoon leeg beginnen.
+        orderVraagPerThread: geladen.orderVraagPerThread ?? {},
       };
     } else {
       state = legeState();
@@ -248,6 +258,9 @@ function rolloverEnOpruimen(s: CapState): void {
   for (const sleutel of Object.keys(s.perThread)) {
     if (nu - s.perThread[sleutel].laatstAt > THREAD_BEWAAR_MS) delete s.perThread[sleutel];
   }
+  for (const sleutel of Object.keys(s.orderVraagPerThread ?? {})) {
+    if (nu - s.orderVraagPerThread[sleutel].laatstAt > THREAD_BEWAAR_MS) delete s.orderVraagPerThread[sleutel];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -276,7 +289,11 @@ function markeerGemeld(capNaam: string): boolean {
   return true;
 }
 
-function blokkeer(cap: string, detail: string): CapUitkomst {
+// stil=true betekent: alleen kijken of de cap dichtzit, zonder te noteren dat
+// Sabur er vandaag over gemaild is. Dat is nodig voor de ontvangstbevestiging:
+// die mag de eenmalige cap-melding van het echte antwoordpad niet opbranden.
+function blokkeer(cap: string, detail: string, stil = false): CapUitkomst {
+  if (stil) return { geblokkeerd: true, cap, detail, meldSabur: false };
   const meldSabur = markeerGemeld(cap);
   return { geblokkeerd: true, cap, detail, meldSabur };
 }
@@ -286,16 +303,18 @@ function blokkeer(cap: string, detail: string): CapUitkomst {
  * antwoord-caps: per thread, per afzender per 24u, en per dag totaal. Geeft de
  * eerste cap terug die dichtzit.
  */
-export function magAntwoorden(mail: InkomendeMail): CapUitkomst {
+export function magAntwoorden(mail: InkomendeMail, opties: { stil?: boolean } = {}): CapUitkomst {
   const s = laadState();
   rolloverEnOpruimen(s);
+  const stil = opties.stil ?? false;
 
   // Per thread.
   const threadTeller = s.perThread[mail.threadSleutel]?.aantal ?? 0;
   if (threadTeller >= config.caps.antwoordenPerThread) {
     return blokkeer(
       "antwoord_thread",
-      `thread ${mail.threadSleutel} heeft al ${threadTeller} botantwoorden (max ${config.caps.antwoordenPerThread})`
+      `thread ${mail.threadSleutel} heeft al ${threadTeller} botantwoorden (max ${config.caps.antwoordenPerThread})`,
+      stil
     );
   }
 
@@ -305,7 +324,8 @@ export function magAntwoorden(mail: InkomendeMail): CapUitkomst {
   if (afzenderTijden.length >= config.caps.mailsPerAfzender24u) {
     return blokkeer(
       "antwoord_afzender",
-      `${mail.vanAdres} kreeg al ${afzenderTijden.length} antwoorden in 24u (max ${config.caps.mailsPerAfzender24u})`
+      `${mail.vanAdres} kreeg al ${afzenderTijden.length} antwoorden in 24u (max ${config.caps.mailsPerAfzender24u})`,
+      stil
     );
   }
 
@@ -313,7 +333,8 @@ export function magAntwoorden(mail: InkomendeMail): CapUitkomst {
   if (s.antwoordenVandaag >= config.caps.antwoordenPerDag) {
     return blokkeer(
       "antwoord_dag",
-      `dagcap bereikt: ${s.antwoordenVandaag} antwoorden vandaag (max ${config.caps.antwoordenPerDag})`
+      `dagcap bereikt: ${s.antwoordenVandaag} antwoorden vandaag (max ${config.caps.antwoordenPerDag})`,
+      stil
     );
   }
 
@@ -341,6 +362,31 @@ export function registreerAntwoord(mail: InkomendeMail): void {
 
   s.antwoordenVandaag += 1;
 
+  bewaarState();
+}
+
+/**
+ * Heeft de bot in deze thread al eens om een ordernummer of kenteken gevraagd?
+ * Zo ja, dan heeft nog eens vragen geen zin en gaat de mail naar Sabur.
+ */
+export function orderVraagGesteld(mail: InkomendeMail): boolean {
+  const s = laadState();
+  rolloverEnOpruimen(s);
+  return (s.orderVraagPerThread[mail.threadSleutel]?.aantal ?? 0) > 0;
+}
+
+/**
+ * Registreert dat de bot in deze thread om een ordernummer of kenteken heeft
+ * gevraagd. Roep dit pas aan NADAT die vraag echt verstuurd is.
+ */
+export function registreerOrderVraag(mail: InkomendeMail): void {
+  const s = laadState();
+  rolloverEnOpruimen(s);
+  const bestaand = s.orderVraagPerThread[mail.threadSleutel];
+  s.orderVraagPerThread[mail.threadSleutel] = {
+    aantal: (bestaand?.aantal ?? 0) + 1,
+    laatstAt: Date.now(),
+  };
   bewaarState();
 }
 

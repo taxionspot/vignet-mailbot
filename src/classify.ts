@@ -21,12 +21,14 @@ import {
   CLASSIFICATIE_SYSTEEM,
   CLASSIFICATIE_TOOL,
   classificatieGebruikerBlok,
+  drempelVoor,
   isIntent,
   isTaal,
   knipMail,
-  VERTROUWEN_DREMPEL,
+  STANDAARD_DREMPELS,
   type BotIntent,
   type BotTaal,
+  type Drempels,
   type MailVoorClassificatie,
 } from "./prompts/classificatie.js";
 import { alsObject } from "./feiten.js";
@@ -59,7 +61,10 @@ function begrensVertrouwen(ruw: unknown): number {
  * Leest het toolantwoord van het model en past de twee vangnetten toe. Werkt
  * puur op een ClaudeAntwoord, dus volledig testbaar met een gestubde client.
  */
-export function verwerkClassificatieAntwoord(antwoord: ClaudeAntwoord): ClassificatieKern {
+export function verwerkClassificatieAntwoord(
+  antwoord: ClaudeAntwoord,
+  drempels: Drempels = STANDAARD_DREMPELS
+): ClassificatieKern {
   const invoer = alsObject(antwoord.toolInvoer) ?? {};
 
   const ruweIntent = invoer.intent;
@@ -82,12 +87,17 @@ export function verwerkClassificatieAntwoord(antwoord: ClaudeAntwoord): Classifi
     intent = ruweIntent;
   }
 
-  // Vangnet 2: te laag vertrouwen wordt mens_nodig. spam_overig laten we met
-  // rust; daar is niet-antwoorden juist de bedoeling en escaleren zou ruis geven.
-  if (!bijgestuurd && intent !== "spam_overig" && vertrouwen < VERTROUWEN_DREMPEL) {
-    intent = "mens_nodig";
-    bijgestuurd = true;
-    bijstuurReden = `vertrouwen ${vertrouwen.toFixed(2)} onder drempel ${VERTROUWEN_DREMPEL}`;
+  // Vangnet 2: te laag vertrouwen wordt mens_nodig. De drempel hangt af van wat
+  // er op het spel staat: geld, recht en wijzigingen zijn streng, informatieve
+  // vragen soepel (zie drempelVoor). spam_overig laten we met rust; daar is
+  // niet-antwoorden juist de bedoeling en escaleren zou ruis geven.
+  if (!bijgestuurd && intent !== "spam_overig") {
+    const drempel = drempelVoor(intent, drempels);
+    if (vertrouwen < drempel) {
+      bijstuurReden = `vertrouwen ${vertrouwen.toFixed(2)} onder drempel ${drempel} voor intent ${intent}`;
+      intent = "mens_nodig";
+      bijgestuurd = true;
+    }
   }
 
   return {
@@ -102,7 +112,10 @@ export function verwerkClassificatieAntwoord(antwoord: ClaudeAntwoord): Classifi
 }
 
 /** Kernfunctie: classificeer een mail in het compacte MailVoorClassificatie-formaat. */
-export async function classificeerKern(mail: MailVoorClassificatie): Promise<ClassificatieKern> {
+export async function classificeerKern(
+  mail: MailVoorClassificatie,
+  drempels: Drempels = STANDAARD_DREMPELS
+): Promise<ClassificatieKern> {
   let antwoord: ClaudeAntwoord;
   try {
     antwoord = await roepClaudeAan({
@@ -128,7 +141,7 @@ export async function classificeerKern(mail: MailVoorClassificatie): Promise<Cla
       kosten: geenKosten(MODEL_CLASSIFICATIE),
     };
   }
-  return verwerkClassificatieAntwoord(antwoord);
+  return verwerkClassificatieAntwoord(antwoord, drempels);
 }
 
 // ---------------------------------------------------------------------------
@@ -163,8 +176,8 @@ export function mailNaarClassificatieInvoer(mail: InkomendeMail): MailVoorClassi
  * Levert het gedeelde Classificatie-type. De concrete kern is los te testen
  * via classificeerKern.
  */
-export async function classificeer(mail: InkomendeMail): Promise<Classificatie> {
-  const kern = await classificeerKern(mailNaarClassificatieInvoer(mail));
+export async function classificeer(mail: InkomendeMail, drempels?: Drempels): Promise<Classificatie> {
+  const kern = await classificeerKern(mailNaarClassificatieInvoer(mail), drempels);
   return {
     intent: kern.intent,
     taal: kern.taal,

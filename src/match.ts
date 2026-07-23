@@ -29,6 +29,15 @@ export interface MatchResultaat {
    * is. De aanroeper mag dan geen enkel ordergegeven prijsgeven en escaleert.
    */
   identiteitMismatch: boolean;
+  /**
+   * Het VH-nummer dat de klant zelf in zijn mail noemde, of null. Alleen
+   * gevuld als er echt een VH-XXXXX in stond, ook als die order niet bestaat.
+   *
+   * De lus gebruikt dit om te beslissen of zelf doorvragen zin heeft: noemde de
+   * klant al een nummer en vinden we het niet, dan is nog eens vragen zinloos
+   * en moet een mens kijken.
+   */
+  genoemdVhNummer: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,13 +127,25 @@ export function kandidaatPlaten(tekst: string, uitsluiten: string[] = []): strin
 
 // Klein hulpje: uit een MatchResultaat maken met de identiteitscheck erin
 // verwerkt. wijze en aantal komen van de aanroeper.
-function bouwResultaat(mail: InkomendeMail, order: OrderFeiten, wijze: MatchWijze, aantal: number): MatchResultaat {
+function bouwResultaat(
+  mail: InkomendeMail,
+  order: OrderFeiten,
+  wijze: MatchWijze,
+  aantal: number,
+  genoemdVhNummer: string | null = null
+): MatchResultaat {
   return {
     order,
     wijze,
     aantalGevonden: aantal,
     identiteitMismatch: !identiteitKlopt(mail.vanAdres, order),
+    genoemdVhNummer,
   };
+}
+
+/** Leeg resultaat: niets gevonden. */
+export function geenMatch(genoemdVhNummer: string | null = null): MatchResultaat {
+  return { order: null, wijze: "geen", aantalGevonden: 0, identiteitMismatch: false, genoemdVhNummer };
 }
 
 /**
@@ -142,14 +163,14 @@ export async function matchOrder(mail: InkomendeMail): Promise<MatchResultaat> {
     const antwoord = await haalOrder({ soort: "token", token: vhNummer });
     if (antwoord.ok && antwoord.order) {
       log.debug(`Order gematcht op token ${vhNummer}`);
-      return bouwResultaat(mail, antwoord.order, "token", antwoord.aantalGevonden ?? 1);
+      return bouwResultaat(mail, antwoord.order, "token", antwoord.aantalGevonden ?? 1, vhNummer);
     }
     // VH-nummer genoemd maar niet gevonden: niet gokken op email/plaat, want
     // de klant verwijst duidelijk naar een specifieke order. Val door, maar de
     // kans dat email of plaat een ANDERE order oplevert willen we niet: als de
     // klant een concreet nummer noemt dat niet bestaat, is dat een mens-geval.
     log.debug(`VH-nummer ${vhNummer} genoemd maar niet gevonden`);
-    return { order: null, wijze: "geen", aantalGevonden: 0, identiteitMismatch: false };
+    return geenMatch(vhNummer);
   }
 
   // Stap 2: afzenderadres tegen order.email. Meerdere orders = de nieuwste
@@ -174,6 +195,7 @@ export async function matchOrder(mail: InkomendeMail): Promise<MatchResultaat> {
     }
   }
 
-  // Niets gevonden.
-  return { order: null, wijze: "geen", aantalGevonden: 0, identiteitMismatch: false };
+  // Niets gevonden. De klant noemde geen VH-nummer (die tak is hierboven al
+  // afgehandeld), dus zelf om een ordernummer of kenteken vragen heeft zin.
+  return geenMatch(null);
 }

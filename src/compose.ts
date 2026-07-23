@@ -11,9 +11,14 @@
 //   - mens_nodig       -> wel een concept opstellen als hulp voor Sabur, maar
 //     altijd escaleren.
 //   - kenteken_fout na inkoop -> escaleren (foutNaInkoop is een mensbeslissing).
-//   - order onbekend bij een order-afhankelijke intent -> escaleren.
+//   - order onbekend bij een order-afhankelijke intent -> sinds 24-07 NIET
+//     meer meteen escaleren: de bot vraagt zelf om het ordernummer of het
+//     kenteken. Pas als dat al gebeurd is (of als de klant een VH-nummer noemde
+//     dat niet bestaat) zet de lus magOrderVragen op false en escaleert deze
+//     laag alsnog.
 //   - overige (status_vraag, annuleren, bewijs_kwijt, product_vraag,
-//     kenteken_fout voor inkoop) -> autonoom opstellen.
+//     kenteken_fout voor inkoop) -> autonoom opstellen. product_vraag mag ook
+//     ZONDER bestelling autonoom, puur uit de kennisbank.
 // Zegt het model "dit weet ik niet" (sentinel) of komt er een leeg concept uit,
 // dan wordt alsnog geescaleerd. De poller beslist wat er met de vlaggen gebeurt.
 
@@ -28,10 +33,17 @@ import {
   opstellenSysteem,
   opstellenGebruiker,
   NIET_WETEN_SENTINEL,
+  type Opstelmodus,
 } from "./prompts/opstellen.js";
 import { isIntent, type BotIntent, type BotTaal, isTaal } from "./prompts/classificatie.js";
 import { bouwFeitenBlok, alsObject, leesTekst, type FeitenBlok } from "./feiten.js";
-import { naarLocale, type Concept, type InkomendeMail, type OpstelInvoer } from "./types.js";
+import {
+  ORDER_GEBONDEN_INTENTS,
+  naarLocale,
+  type Concept,
+  type InkomendeMail,
+  type OpstelInvoer,
+} from "./types.js";
 
 /** Concreet conceptresultaat, los van het gedeelde Concept-type. */
 export interface ConceptKern {
@@ -56,13 +68,11 @@ const HARDE_ESCALATIE: ReadonlySet<BotIntent> = new Set<BotIntent>([
   "klacht_juridisch",
 ]);
 
-// Intents die een gevonden order nodig hebben om zinnig te beantwoorden.
-const ORDER_VEREIST: ReadonlySet<BotIntent> = new Set<BotIntent>([
-  "status_vraag",
-  "annuleren",
-  "bewijs_kwijt",
-  "kenteken_fout",
-]);
+// Intents die een gevonden order nodig hebben om zinnig te beantwoorden. Eén
+// bron van waarheid: dezelfde lijst die de lus in index.ts gebruikt.
+const ORDER_VEREIST: ReadonlySet<BotIntent> = new Set<BotIntent>(
+  ORDER_GEBONDEN_INTENTS as readonly BotIntent[]
+);
 
 function bevatSentinel(tekst: string): boolean {
   return tekst.toLowerCase().includes(NIET_WETEN_SENTINEL);
@@ -108,9 +118,11 @@ export async function stelOpKern(
   mail: MailKern,
   feiten: FeitenBlok,
   taalHint?: BotTaal,
+  opties: { magOrderVragen?: boolean } = {},
 ): Promise<ConceptKern> {
   const taal: BotTaal = taalHint ?? (isTaal(feiten.taal) ? feiten.taal : "en");
   const onderwerp = bouwOnderwerp(mail.onderwerp, feiten);
+  const magOrderVragen = opties.magOrderVragen ?? true;
 
   // Onbekende intent is nooit veilig autonoom.
   const veiligeIntent: BotIntent = isIntent(intent) ? intent : "mens_nodig";
@@ -128,8 +140,13 @@ export async function stelOpKern(
     });
   }
 
-  // 3. Order-afhankelijke intent zonder gevonden order: escaleren zonder modelaanroep.
-  if (ORDER_VEREIST.has(veiligeIntent) && !feiten.bekend) {
+  // 3. Order-afhankelijke intent zonder gevonden order. Sinds 24-07 escaleert
+  //    dit niet meer meteen: de bot vraagt eerst zelf om het ordernummer of het
+  //    kenteken. De lus zet magOrderVragen op false zodra dat in deze thread al
+  //    een keer gebeurd is, of als de klant een VH-nummer noemde dat niet
+  //    bestaat; dan is doorvragen zinloos en kijkt een mens ernaar.
+  const orderOntbreekt = ORDER_VEREIST.has(veiligeIntent) && !feiten.bekend;
+  if (orderOntbreekt && !magOrderVragen) {
     return leegConcept(taal, onderwerp, {
       escaleren: true,
       escalatieReden: `intent ${veiligeIntent} heeft een order nodig, maar er is geen order gevonden`,
@@ -145,7 +162,11 @@ export async function stelOpKern(
   }
 
   // 5. Opstellen met het model. mens_nodig krijgt ook een concept, maar escaleert altijd.
-  const systeem = opstellenSysteem(veiligeIntent, taal, feiten.land || null);
+  //    De modus vertelt het model in welke situatie hij schrijft: met een
+  //    bestelling, zonder bestelling maar met een algemene vraag, of met een
+  //    ordervraag waarvan we de bestelling niet vinden.
+  const modus: Opstelmodus = orderOntbreekt ? "order_onbekend" : feiten.bekend ? "normaal" : "algemeen";
+  const systeem = opstellenSysteem(veiligeIntent, taal, feiten.land || null, modus);
   const gebruiker = opstellenGebruiker({
     intent: veiligeIntent,
     taal,
@@ -272,7 +293,9 @@ export async function stelOp(invoer: OpstelInvoer): Promise<Concept> {
   const intent: BotIntent = isIntent(invoer.classificatie?.intent)
     ? invoer.classificatie.intent
     : "mens_nodig";
-  const kern = await stelOpKern(intent, mailUitInkomend(invoer.mail), feitenBlok, taal);
+  const kern = await stelOpKern(intent, mailUitInkomend(invoer.mail), feitenBlok, taal, {
+    magOrderVragen: invoer.magOrderVragen ?? true,
+  });
   return {
     onderwerp: kern.onderwerp,
     tekst: kern.tekst,
