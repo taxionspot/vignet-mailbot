@@ -117,6 +117,14 @@ anders kan. Vier knoppen bepalen dat gedrag.
 | `VERTROUWEN_DREMPEL_INFO` | `0.45` | Drempel voor informatie: status, uitleg, bewijs kwijt. Daar wordt niets onomkeerbaars gedaan. |
 | `MAILBOT_ZELF_DOORVRAGEN` | `1` | Vindt de bot de bestelling niet, dan vraagt hij zelf om ordernummer of kenteken. Een keer per gesprek; daarna gaat de mail alsnog naar Sabur. |
 | `MAILBOT_ONTVANGSTBEVESTIGING` | `1` | Escaleert de bot toch, dan krijgt de klant een korte bevestiging in zijn eigen taal, zodat het niet stil blijft. |
+| `MAILBOT_EIS_AUTHENTICATIE` | `1` | Naar een afzender zonder gekoppelde bestelling mailt de bot alleen als DMARC of DKIM bewijst dat het adres echt is. Anders kan iemand met een vervalst adres onze bot post laten sturen naar een derde. |
+
+Twee dingen blijven bij geld bewust ouderwets streng. Een annuleerverzoek waarvan
+wij de bestelling niet kunnen vinden gaat **altijd** met spoed naar Sabur, ook
+al vraagt de bot de klant netjes om zijn ordernummer; dat is tijdkritisch, want
+na de inkoop kan kosteloos annuleren niet meer. En die vraag om het ordernummer
+is een vaste tekst uit `src/teksten.ts`, geen modeltekst, zodat er niets in kan
+staan wat als toezegging te lezen valt.
 
 Wat er hoe dan ook naar Sabur gaat: factuur, betalingsproblemen, juridische
 mail, kentekenfout na inkoop, een refund die niet lukt, en elk concept dat door

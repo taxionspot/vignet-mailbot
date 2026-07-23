@@ -104,6 +104,15 @@ const MAILBOT_ONTVANGSTBEVESTIGING = schakelaar("MAILBOT_ONTVANGSTBEVESTIGING", 
 // oude gedrag van voor 24-07).
 const MAILBOT_ZELF_DOORVRAGEN = schakelaar("MAILBOT_ZELF_DOORVRAGEN", true);
 
+// Eist de bot bewijs (DMARC- of DKIM-pass) dat het afzenderadres echt is,
+// voordat hij mailt naar iemand die NIET aan een bestelling te koppelen is?
+// Staat dit aan, dan kan niemand met een vervalst From-adres onze bot post
+// laten sturen naar een onschuldige derde. Voor klanten met een gevonden
+// bestelling en kloppende identiteit verandert er niets.
+// Zet dit alleen uit als blijkt dat de mailserver geen Authentication-Results
+// meestuurt; dan blokkeert de poort namelijk ook echte klanten.
+const MAILBOT_EIS_AUTHENTICATIE = schakelaar("MAILBOT_EIS_AUTHENTICATIE", true);
+
 const POLL_SECONDEN = geheelGetal("POLL_SECONDEN", 30, 5, 3600);
 const AFZENDER_NAAM = optioneel("AFZENDER_NAAM", "Nina");
 
@@ -225,6 +234,7 @@ export const config = {
     refund: MAILBOT_REFUND,
     ontvangstbevestiging: MAILBOT_ONTVANGSTBEVESTIGING,
     zelfDoorvragen: MAILBOT_ZELF_DOORVRAGEN,
+    eisAuthenticatie: MAILBOT_EIS_AUTHENTICATIE,
   },
   poll: {
     seconden: POLL_SECONDEN,

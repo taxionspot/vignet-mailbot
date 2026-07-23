@@ -372,7 +372,18 @@ export function registreerAntwoord(mail: InkomendeMail): void {
 export function orderVraagGesteld(mail: InkomendeMail): boolean {
   const s = laadState();
   rolloverEnOpruimen(s);
-  return (s.orderVraagPerThread[mail.threadSleutel]?.aantal ?? 0) > 0;
+  // Op twee sleutels tellen. De threadsleutel alleen is niet genoeg: die komt
+  // uit References of In-Reply-To en is dus per mail anders zodra een klant een
+  // NIEUWE mail begint in plaats van te antwoorden. Dan zou de bot hem elke
+  // keer opnieuw om zijn ordernummer vragen. Het afzenderadres ligt wel vast.
+  const perThread = s.orderVraagPerThread[mail.threadSleutel]?.aantal ?? 0;
+  const perAfzender = s.orderVraagPerThread[afzenderSleutel(mail)]?.aantal ?? 0;
+  return perThread > 0 || perAfzender > 0;
+}
+
+/** Tweede sleutel voor de ordervraag: het afzenderadres, met een eigen prefix. */
+function afzenderSleutel(mail: InkomendeMail): string {
+  return `afzender:${(mail.vanAdres ?? "").trim().toLowerCase()}`;
 }
 
 /**
@@ -382,11 +393,11 @@ export function orderVraagGesteld(mail: InkomendeMail): boolean {
 export function registreerOrderVraag(mail: InkomendeMail): void {
   const s = laadState();
   rolloverEnOpruimen(s);
-  const bestaand = s.orderVraagPerThread[mail.threadSleutel];
-  s.orderVraagPerThread[mail.threadSleutel] = {
-    aantal: (bestaand?.aantal ?? 0) + 1,
-    laatstAt: Date.now(),
-  };
+  const nu = Date.now();
+  for (const sleutel of [mail.threadSleutel, afzenderSleutel(mail)]) {
+    const bestaand = s.orderVraagPerThread[sleutel];
+    s.orderVraagPerThread[sleutel] = { aantal: (bestaand?.aantal ?? 0) + 1, laatstAt: nu };
+  }
   bewaarState();
 }
 

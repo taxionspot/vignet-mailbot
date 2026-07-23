@@ -46,14 +46,14 @@ export const LANDEN_KENNIS: Record<string, LandKennis> = {
     naam: "Oostenrijk",
     operatorNaam: "ASFINAG",
     operatorUrl: "https://shop.asfinag.at",
-    checkUrl: "https://evidenz.asfinag.at",
+    checkUrl: "https://shop.asfinag.at/en/evignettes/query",
     feiten: [
       "Producten: 1 dag, 10 dagen, 2 maanden en jaarvignet.",
       "Het 1-daags en 10-daags vignet zijn direct geldig, ook als de klant vandaag als ingangsdatum kiest.",
       "Het 2-maanden en het jaarvignet starten door het herroepingsrecht minimaal 18 dagen na aankoop. Dat is een wettelijke regel die ASFINAG hanteert, geen keuze van ons. Wie eerder vertrekt kiest het 10-daags vignet.",
       "Maximaal 30 dagen vooruit boeken.",
       "Kentekencorrectie kan zolang wij nog niet hebben ingekocht: de klant doet dat zelf via de knop op de statuspagina. Daarna staat het kenteken in principe vast.",
-      "Een aanhanger of caravan achter een personenauto heeft in Oostenrijk geen eigen vignet nodig, zolang het geheel onder 3,5 ton blijft.",
+      "Een aanhanger of caravan achter een personenauto heeft in Oostenrijk geen eigen vignet nodig. Wat telt is de toegestane maximummassa van het TREKKENDE voertuig (de auto), niet het gewicht van auto en caravan samen.",
       "Sommige trajecten vallen buiten het vignet en kennen aparte trajecttol: de Brenner (A13), de Tauern, de Karawanken, de Arlberg en de Pyhrn. Die betaalt de klant zelf bij de tolpoort of vooraf online bij de tolbeheerder.",
       "Voor voertuigen boven 3,5 ton, zoals een zware camper, geldt in Oostenrijk een kilometerheffing via de GO-Box. Dat product leveren wij niet.",
     ],
@@ -112,7 +112,7 @@ export const LANDEN_KENNIS: Record<string, LandKennis> = {
     naam: "Roemenie",
     operatorNaam: "CNAIR (erovinieta.ro)",
     operatorUrl: "https://www.erovinieta.ro",
-    checkUrl: "https://www.erovinieta.ro",
+    checkUrl: "https://www.erovinieta.ro/vignettes-portal-web/",
     feiten: [
       "Producten: 1 dag, 10 dagen, 30 dagen, 60 dagen en 12 maanden (rovinieta).",
       "Alle Roemeense vignetten zijn direct geldig na registratie.",
@@ -137,12 +137,12 @@ export const LANDEN_KENNIS: Record<string, LandKennis> = {
       "Producten: 1 dag, weekend, 1 week, 1 maand, 3 maanden en jaarvignet.",
       "Het weekendvignet is een vast venster van vrijdag 12:00 tot zondag 23:59, ongeacht de gekozen startdatum. Wie eerder vertrekt of later terugrijdt kiest beter het weekvignet.",
       "De overige Bulgaarse vignetten zijn direct geldig na registratie.",
-      "Maximaal 30 dagen vooruit boeken, behalve het weekendvignet met zijn vaste venster.",
+      "Maximaal 30 dagen vooruit boeken, ook voor het weekendvignet. Dat heeft daarnaast zijn eigen vaste venster.",
       "Bij Bulgarije is een kenteken na inkoop alleen te corrigeren als er hoogstens 3 tekens fout staan, via een gevolmachtigde bij het portaal. Meer dan 3 tekens fout betekent een nieuw vignet.",
       "Een correctie kan alleen als er in Bulgarije geen ander voertuig onder het foute kenteken geregistreerd staat. Tot de correctie rond is, geldt de tol als onbetaald.",
       "De geldigheidsperiode van een Bulgaars vignet is niet te wijzigen.",
       "Neem het kenteken exact over zoals op het bord: 0 (nul) en O (letter) zijn niet uitwisselbaar.",
-      "Een aanhanger of caravan heeft alleen een eigen vignet nodig als auto en aanhanger samen boven 3,5 ton komen. In dat geval regelen wij beide vignetten, de klant mag daarvoor mailen.",
+      "Een aanhanger of caravan achter een personenauto heeft in Bulgarije geen eigen vignet nodig. Beslissend is de toegestane maximummassa van de auto zelf, niet van het gespan.",
       "Motoren zijn in Bulgarije vrijgesteld van de vignetplicht.",
     ],
   },
@@ -182,13 +182,13 @@ export const PRIJS_KENNIS: string[] = [
 export const BESTELLEN_KENNIS: string[] = [
   "Wij hebben nodig: het land van registratie, het kenteken, het e-mailadres en voor de meeste vignetten een startdatum. Voor Roemenie ook het chassisnummer.",
   "De klant hoeft geen account te maken, sluit geen abonnement af en betaalt eenmalig per bestelling.",
-  "Betalen kan met iDEAL, Bancontact, creditcard (Visa of Mastercard), PayPal en Apple Pay. Welke lokale bankmethode zichtbaar is hangt af van het land van het kenteken. Betalen met creditcard gaat via kaartvelden in het bestelscherm zelf, inloggen bij PayPal is niet nodig.",
+  "Betalen kan met creditcard (Visa of Mastercard), PayPal, Apple Pay en Google Pay, plus een lokale bankmethode die afhangt van het land van het kenteken: iDEAL voor Nederland, Bancontact voor Belgie, eps voor Oostenrijk, BLIK en Przelewy24 voor Polen, Trustly voor Duitsland en Spanje. Heeft een land geen eigen bankmethode, dan blijven creditcard en PayPal over. Betalen met creditcard gaat via kaartvelden in het bestelscherm zelf, inloggen bij PayPal is niet nodig.",
   "De betaling loopt via de beveiligde betaalpagina van onze betaaldienstverlener. Wij zien en bewaren zelf geen kaartgegevens.",
   "Direct na de betaling krijgt de klant een bevestiging per e-mail met het betaalde bedrag, het ordernummer, het gekozen vignet en het kenteken, plus een knop naar zijn eigen statuspagina.",
   "Wij starten de uitvoering pas nadat de betaling bevestigd is.",
   "Voor een startdatum vandaag geldt een uiterste tijd, in Nederlandse tijd: tot 22:00 gewoon, tussen 22:00 en 23:30 alleen als spoedbestelling met toeslag, en vanaf 23:30 kan vandaag niet meer worden gekozen. Voor Zwitserland gelden die avondtijden niet.",
   "Een spoedtoeslag bestaat alleen in dat late avondvenster en staat dan apart in het besteloverzicht, dus de klant ziet het voor het betalen. Overdag wordt spoed niet aangeboden en niet gerekend.",
-  "Bestellen en alle uitleg kan in het Nederlands, Duits, Frans en Engels. Wij antwoorden in dezelfde taal als de klant schrijft.",
+  "Bestellen en alle uitleg kan in elf talen: Nederlands, Duits, Frans, Engels, Pools, Italiaans, Roemeens, Tsjechisch, Hongaars, Spaans en Turks. Wij antwoorden altijd in de taal waarin de klant schrijft.",
 ];
 
 export const NA_BESTELLING_KENNIS: string[] = [
@@ -218,7 +218,7 @@ export const VOERTUIG_KENNIS: string[] = [
   "Wij regelen vignetten voor personenauto's en campers tot 3,5 ton toegestane maximummassa. Dat gewicht staat op het kentekenbewijs bij veld F.",
   "Motorvignetten verkopen wij op dit moment niet. In Tsjechie, Slowakije, Roemenie en Bulgarije zijn motoren sowieso vrijgesteld. Voor Oostenrijk of Zwitserland verwijzen wij de klant naar het officiele portaal.",
   "Voor voertuigen zwaarder dan 3,5 ton geldt in Oostenrijk een kilometerheffing via de GO-Box. Dat leveren wij niet.",
-  "Een aanhanger of caravan valt in Oostenrijk, Tsjechie, Slowakije, Roemenie en Bulgarije onder het vignet van de auto zolang het geheel onder 3,5 ton blijft. Zwitserland is de uitzondering: daar heeft de aanhanger een eigen vignet nodig.",
+  "Bij een caravan of aanhanger telt de toegestane maximummassa van het TREKKENDE voertuig, dus van de auto zelf, en niet het gewicht van auto en caravan samen. Weegt de auto 3,5 ton of minder, dan volstaat het gewone auto-vignet in Oostenrijk, Tsjechie, Slowakije, Roemenie en Bulgarije. Zwitserland is de uitzondering: daar heeft de aanhanger een eigen, tweede vignet nodig op zijn eigen kenteken.",
 ];
 
 export const NIET_AANBOD_KENNIS: string[] = [
@@ -236,6 +236,7 @@ export const ANNULEER_REGEL: string[] = [
   "Beloof bij een annulering na inkoop nooit een uitkomst. Zeg niet dat de operator het terugbetaalt, maar dat de operator daarover beslist. Geef de klant de naam en de link van het juiste portaal mee.",
   "Bij het bestellen geeft de klant twee akkoorden: opdracht om het vignet namens hem te registreren, en het verzoek om direct met de uitvoering te beginnen waarbij het herroepingsrecht vervalt zodra het vignet geregistreerd is. Daarom is herroepen na registratie wettelijk niet meer mogelijk. Tot dat moment kan de klant altijd kosteloos annuleren.",
   "Lukt de registratie onverhoopt niet, dan brengen wij het in orde of betalen wij het volledige bedrag terug.",
+  "LET OP, tijdelijke tegenspraak op de site: op de statuspagina en in de veelgestelde vragen staat nog dat de klant via de statuspagina kan annuleren. Die knop bestaat niet meer. Zegt een klant dat hij die knop zoekt, spreek hem dan niet tegen en zeg niet dat hij het verkeerd ziet. Erken dat die tekst nog op de site staat, bied excuses aan voor de verwarring, en regel het gewoon per mail.",
 ];
 
 // ---------------------------------------------------------------------------

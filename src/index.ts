@@ -50,7 +50,13 @@ import {
 } from "./types.js";
 import { drempelVoor, isTaal, type BotIntent, type BotTaal, type Drempels } from "./prompts/classificatie.js";
 import { merkNaam } from "./prompts/opstellen.js";
-import { ONTVANGST_ONDERWERP, ONTVANGST_TEKST, kiesTekst, metOndertekening } from "./teksten.js";
+import {
+  ANNULEER_ORDERVRAAG_TEKST,
+  ONTVANGST_ONDERWERP,
+  ONTVANGST_TEKST,
+  kiesTekst,
+  metOndertekening,
+} from "./teksten.js";
 
 // De vier functies van de andere bouwers. Relatieve imports eindigen op .js
 // (ESM met NodeNext), ook al heten de bronbestanden .ts.
@@ -172,12 +178,43 @@ const GEEN_BEVESTIGING: ReadonlySet<EscalatieReden> = new Set<EscalatieReden>([
   "verzending_uit",
   "cap_bereikt",
   "identiteit_mismatch",
+  // Bij een refund met onbekende uitkomst kan de app zijn annuleringsmail al
+  // verstuurd hebben. Een bevestiging erbovenop zou de klant eerst
+  // "geannuleerd en terugbetaald" laten lezen en daarna "uw bericht ligt bij
+  // een collega". Dat is tegenstrijdig, dus hier zwijgen we.
+  "actie_onbekend",
 ]);
+
+/**
+ * Mag de bot deze afzender uberhaupt mailen?
+ *
+ * Het From-adres is zonder authenticatie te vervalsen. Voor 24-07 was dat
+ * ongevaarlijk: een afzender zonder gekoppelde bestelling kreeg nooit iets
+ * terug. Nu de bot ook onbekende afzenders antwoordt, zou iemand met een
+ * vervalst From-adres onze bot post kunnen laten sturen naar een willekeurige
+ * derde. Daarom: is er geen bestelling aan deze afzender te koppelen, dan moet
+ * DMARC of DKIM bewijzen dat het adres echt is.
+ *
+ * Is er WEL een bestelling met kloppende identiteit, dan verandert er niets
+ * ten opzichte van het oude gedrag: die klant krijgt gewoon antwoord.
+ */
+function magKlantMailen(mail: InkomendeMail, gekoppeldeOrder: boolean): boolean {
+  if (gekoppeldeOrder) return true;
+  if (!config.schakelaars.eisAuthenticatie) return true;
+  return mail.afzenderGeauthenticeerd;
+}
 
 /** De taal van de klant, met terugval op Engels. */
 function taalVan(classificatie: Classificatie | null): BotTaal {
   const ruw = classificatie?.taal;
   return isTaal(ruw) ? ruw : "en";
+}
+
+/** Onderwerp voor een vaste-tekst-antwoord: Re: op het origineel, of een net alternatief. */
+function reOnderwerpVan(mail: InkomendeMail, taal: BotTaal): string {
+  const schoon = (mail.onderwerp ?? "").trim();
+  if (!schoon) return kiesTekst(ONTVANGST_ONDERWERP, taal);
+  return /^re:/i.test(schoon) ? schoon : `Re: ${schoon}`;
 }
 
 /**
@@ -196,7 +233,8 @@ async function escaleerNaarSabur(
   mail: InkomendeMail,
   esc: EscalatieOpdracht,
   classificatie: Classificatie | null,
-  regel?: MailBotLogRegel
+  regel?: MailBotLogRegel,
+  opts: { gekoppeldeOrder?: boolean } = {}
 ): Promise<boolean> {
   await voerActieUit(esc);
 
@@ -206,6 +244,10 @@ async function escaleerNaarSabur(
   // sturen dan een klant in de verkeerde taal aanschrijven.
   if (!classificatie) return false;
   if (!magVersturen()) return false;
+  if (!magKlantMailen(mail, opts.gekoppeldeOrder ?? Boolean(esc.orderToken))) {
+    log.info(`Geen bevestiging aan ${mail.vanAdres}: afzender niet geauthenticeerd en geen gekoppelde bestelling`);
+    return false;
+  }
 
   // Stil toetsen: raakt de cap dicht te zitten, dan sturen we niets, maar we
   // mogen de eenmalige cap-melding aan Sabur niet opbranden met een
@@ -219,11 +261,7 @@ async function escaleerNaarSabur(
     config.afzenderNaam,
     merkNaam()
   );
-  const onderwerp = mail.onderwerp?.trim()
-    ? /^re:/i.test(mail.onderwerp.trim())
-      ? mail.onderwerp.trim()
-      : `Re: ${mail.onderwerp.trim()}`
-    : kiesTekst(ONTVANGST_ONDERWERP, taal);
+  const onderwerp = reOnderwerpVan(mail, taal);
 
   const opdracht = bouwAntwoordOpdracht(
     mail,
@@ -624,6 +662,28 @@ async function verwerkAlgemeneVraag(
   classificatie: Classificatie,
   intent: Intent
 ): Promise<VerwerkUitkomst> {
+  // Anti-spoofing: zonder gekoppelde bestelling mailen wij alleen terug naar
+  // een adres dat aantoonbaar echt is. Anders zou een vervalst From-adres ons
+  // een mail naar een willekeurige derde laten sturen.
+  if (!magKlantMailen(mail, false)) {
+    const esc = bouwEscalatie(mail, {
+      reden: "geen_order",
+      toelichting: `Algemene vraag van ${mail.vanAdres}, maar het afzenderadres is NIET geauthenticeerd (geen DMARC- of DKIM-pass) en er is geen bestelling aan te koppelen. Niet automatisch beantwoord; mogelijk een vervalst adres. Beoordeel handmatig.`,
+      intent: classificatie.intent,
+      vertrouwen: classificatie.vertrouwen,
+    });
+    const regel = basisLog(mail, classificatie, null);
+    await escaleerNaarSabur(mail, esc, classificatie, regel, { gekoppeldeOrder: false });
+    regel.actie = "escalatie_sturen";
+    regel.escalatie = true;
+    regel.escalatieReden = "geen_order";
+    regel.bestemming = config.mappen.escalatie;
+    regel.fout = "afzender_niet_geauthenticeerd";
+    await schrijfLog(regel);
+    log.warn(`Algemene vraag niet beantwoord, afzender niet geauthenticeerd: ${mail.vanAdres}`);
+    return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
+  }
+
   const invoer: OpstelInvoer = {
     mail,
     classificatie,
@@ -654,7 +714,21 @@ async function verwerkOrderOnbekend(
 ): Promise<VerwerkUitkomst> {
   const alGevraagd = orderVraagGesteld(mail);
   const genoemdNummer = match.genoemdVhNummer;
-  const magVragen = config.schakelaars.zelfDoorvragen && !alGevraagd && !genoemdNummer;
+  const magVragen =
+    config.schakelaars.zelfDoorvragen && !alGevraagd && !genoemdNummer && magKlantMailen(mail, false);
+
+  // ANNULEREN is een apart geval, en het gevaarlijkste. Twee redenen:
+  //   1. Tijdkritisch. Levering duurt normaal een kwartier en Roemenie kopen we
+  //      direct na de betaling in. Wacht de bot op een antwoord van de klant,
+  //      dan is kosteloos annuleren intussen misschien niet meer mogelijk.
+  //      Sabur moet dit dus METEEN zien en zelf op naam of kenteken kunnen
+  //      zoeken, ook als de bot netjes doorvraagt.
+  //   2. Geld. Bij annuleren mag er geen woord het model uit komen dat als
+  //      toezegging te lezen is, dus die vraag om het ordernummer is een vaste
+  //      tekst en geen modelaanroep.
+  if (intent === "annuleren") {
+    return await verwerkAnnuleerZonderOrder(mail, classificatie, match, { magVragen });
+  }
 
   if (!magVragen) {
     const toelichting = genoemdNummer
@@ -700,6 +774,69 @@ async function verwerkOrderOnbekend(
     registreerOrderVraag(mail);
   }
   return uitkomst;
+}
+
+// Annuleerverzoek waarvan wij de bestelling niet kunnen vinden. Sabur krijgt
+// ALTIJD een escalatie (tijdkritisch), en de klant krijgt daarnaast een vaste
+// tekst met de vraag om zijn ordernummer. Die tekst komt niet uit het model:
+// bij geld wordt niets geformuleerd wat als toezegging te lezen valt.
+async function verwerkAnnuleerZonderOrder(
+  mail: InkomendeMail,
+  classificatie: Classificatie,
+  match: MatchResultaat,
+  opts: { magVragen: boolean }
+): Promise<VerwerkUitkomst> {
+  const regel = basisLog(mail, classificatie, null);
+  const genoemdNummer = match.genoemdVhNummer;
+
+  const esc = bouwEscalatie(mail, {
+    reden: "geen_order",
+    toelichting: genoemdNummer
+      ? `ANNULEERVERZOEK van ${mail.vanAdres} met ordernummer ${genoemdNummer}, maar die bestelling bestaat niet in de database. TIJDKRITISCH: zoek zelf op naam, kenteken of e-mailadres voordat er ingekocht wordt.`
+      : `ANNULEERVERZOEK van ${mail.vanAdres}, maar er is geen bestelling te vinden op dit e-mailadres. TIJDKRITISCH: zoek zelf op naam of kenteken voordat er ingekocht wordt. De bot heeft de klant om zijn ordernummer gevraagd, maar niets bevestigd en niets terugbetaald.`,
+    spoed: true,
+    intent: classificatie.intent,
+    vertrouwen: classificatie.vertrouwen,
+  });
+  // Bewust NIET via escaleerNaarSabur: de standaard-ontvangstbevestiging is
+  // hier verkeerd, want de klant moet iets DOEN (zijn ordernummer sturen).
+  await voerActieUit(esc);
+
+  let verstuurd = false;
+  if (opts.magVragen && magVersturen() && magKlantMailen(mail, false)) {
+    const cap = magAntwoorden(mail, { stil: true });
+    if (!cap.geblokkeerd) {
+      const taal = taalVan(classificatie);
+      const concept: Concept = {
+        onderwerp: reOnderwerpVan(mail, taal),
+        tekst: metOndertekening(
+          kiesTekst(ANNULEER_ORDERVRAAG_TEKST, taal),
+          config.afzenderNaam,
+          merkNaam()
+        ),
+        taal: naarLocale(taal),
+      };
+      const res = await voerActieUit(bouwAntwoordOpdracht(mail, concept));
+      if (res.ok && res.uitgevoerd) {
+        registreerAntwoord(mail);
+        registreerOrderVraag(mail);
+        verstuurd = true;
+        regel.antwoordTekst = concept.tekst;
+        regel.verstuurdAt = new Date().toISOString();
+      } else {
+        log.warn(`Ordervraag bij annuleren niet verstuurd: ${res.fout ?? "onbekend"}`);
+      }
+    }
+  }
+
+  regel.actie = "escalatie_sturen";
+  regel.escalatie = true;
+  regel.escalatieReden = "geen_order";
+  regel.bestemming = config.mappen.escalatie;
+  regel.melding = verstuurd ? "klant om ordernummer gevraagd (vaste tekst)" : "klant niets gestuurd";
+  await schrijfLog(regel);
+  log.warn(`ANNULEERVERZOEK zonder bestelling van ${mail.vanAdres}, geescaleerd met spoed`);
+  return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
 }
 
 // kenteken_fout: voor inkoop uitleg plus link naar zelf corrigeren; na inkoop
@@ -1053,6 +1190,15 @@ async function stelOpEnVerstuur(
   const regel = basisLog(mail, classificatie, order);
   // Zonder bestelling is er niets om naar te verwijzen in de log en de melding.
   const waarover = order ? order.orderToken : "een vraag zonder bestelling";
+
+  // Cap VOOR het opstellen toetsen. Zit hij dicht, dan mag het antwoord toch
+  // niet weg en zou een modelaanroep alleen geld kosten. Bij een mailstorm
+  // scheelt dat het verschil tussen een rekening en geen rekening.
+  const capVooraf = magAntwoorden(mail, { stil: true });
+  if (capVooraf.geblokkeerd) {
+    // Nu wel de echte toets, zodat Sabur zijn eenmalige cap-melding krijgt.
+    return await capGeblokkeerd(mail, classificatie, order, magAntwoorden(mail));
+  }
 
   let uit: { concept: Concept } | { afgekeurd: string };
   try {

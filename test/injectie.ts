@@ -32,8 +32,11 @@ import {
 } from "../src/claude";
 import { classificeerKern, verwerkClassificatieAntwoord } from "../src/classify";
 import { stelOpKern } from "../src/compose";
-import { controleerConceptKern } from "../src/verify";
+import { bedragenInTekst, controleerConceptKern } from "../src/verify";
 import { bouwFeitenBlok } from "../src/feiten";
+import { opstellenSysteem } from "../src/prompts/opstellen";
+import { kennisBlok } from "../src/prompts/kennis";
+import { ANNULEER_ORDERVRAAG_TEKST } from "../src/teksten";
 import type { BotIntent, BotTaal } from "../src/prompts/classificatie";
 
 // ---------------------------------------------------------------------------
@@ -399,6 +402,62 @@ async function run(): Promise<void> {
       !r.ok && r.code === "bedrag_niet_toegestaan",
       JSON.stringify({ r, toegestaan: geenOrder.bedragenCents }),
     );
+  }
+
+  // -- 17. De twee kritieke defecten uit de review van 24-07 --------------
+  {
+    // KRITIEK 1 was: de systeemprompt gaf het model bij annuleren zonder
+    // gevonden bestelling nog steeds de opdracht "bevestig dat de annulering
+    // geregeld is en het volledige bedrag terugkomt". Die instructie hoort
+    // alleen in de normale situatie te staan, met een bestelling erbij.
+    const zonderOrder = opstellenSysteem("annuleren", "nl", null, "order_onbekend");
+    const metOrder = opstellenSysteem("annuleren", "nl", "at", "normaal");
+    const belofte = "bevestig dan dat de annulering geregeld is";
+    check(
+      "17a annuleerprompt zonder bestelling bevat GEEN bevestig-instructie",
+      !zonderOrder.includes(belofte),
+      zonderOrder.slice(zonderOrder.indexOf("DEZE MAIL"), zonderOrder.indexOf("DEZE MAIL") + 300),
+    );
+    check(
+      "17b annuleerprompt MET bestelling bevat die instructie nog wel",
+      metOrder.includes(belofte),
+      "de normale situatie moet ongewijzigd blijven",
+    );
+    check(
+      "17c algemene modus bevat de intent-instructie ook niet",
+      !opstellenSysteem("status_vraag", "nl", null, "algemeen").includes(
+        "Vertel in gewone taal wat de stand van zaken is",
+      ),
+      "modus algemeen heeft geen feitenset om de stand uit af te leiden",
+    );
+  }
+  {
+    // De vaste annuleer-ordervraag mag in geen enkele taal iets bevestigen of
+    // een bedrag noemen: hij vraagt alleen om gegevens.
+    const verdacht = /(terugbetaal|terugbetaling|refund|geannuleerd|annulering is|erstattet|storniert|rembours|annulee|zwrot|rimbors|rambursat|vraceni|visszateri|reembols|iade)/i;
+    let fout = "";
+    for (const [taal, tekst] of Object.entries(ANNULEER_ORDERVRAAG_TEKST)) {
+      if (verdacht.test(tekst)) fout = `${taal}: ${tekst}`;
+      if (bedragenInTekst(tekst).length > 0) fout = `${taal} noemt een bedrag`;
+    }
+    check("17d vaste annuleer-ordervraag belooft niets in geen enkele taal", fout === "", fout);
+    check(
+      "17e vaste annuleer-ordervraag bestaat in alle 11 talen",
+      Object.keys(ANNULEER_ORDERVRAAG_TEKST).length === 11,
+      String(Object.keys(ANNULEER_ORDERVRAAG_TEKST).length),
+    );
+  }
+  {
+    // KRITIEK 2 was: buiten het geldpad werd nergens gecontroleerd of het
+    // afzenderadres echt is. De kennisbank mag bovendien geen bedragen
+    // bevatten, want verify keurt die af en dan escaleert de mail alsnog.
+    const blok = kennisBlok(null);
+    check(
+      "17f kennisbank bevat geen enkel bedrag",
+      bedragenInTekst(blok).length === 0,
+      JSON.stringify(bedragenInTekst(blok)),
+    );
+    check("17g kennisbank noemt de merknaam Taxionspot nergens", !/taxionspot/i.test(blok), "merkregel");
   }
 
   // ---------------------------------------------------------------------
