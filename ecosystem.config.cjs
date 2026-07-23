@@ -2,15 +2,18 @@
 //
 // Draaien:
 //   npm run build          (eenmalig, of na een codewijziging)
-//   pm2 start ecosystem.config.js
+//   pm2 start ecosystem.config.cjs
 //   pm2 logs vignet-mailbot
 //   pm2 restart vignet-mailbot
 //   pm2 stop vignet-mailbot        (noodstop: de bot verwerkt dan niets meer)
 //
+// Dit bestand heet .cjs (niet .js), want package.json heeft "type": "module".
+// Zonder de .cjs-extensie leest Node dit CommonJS-bestand als ESM en faalt pm2
+// met de melding "contains type: module ... rename it to use the .cjs extension".
+// De bot zelf draait als ESM uit dist/; alleen dit pm2-configbestand is CommonJS.
+//
 // pm2 leest .env niet zelf; de bot laadt .env via dotenv bij het opstarten.
-// Zet gevoelige waarden dus in .env naast dit bestand, of geef ze via de
-// omgeving mee. Dit CommonJS-bestand blijft .js zodat pm2 het direct inleest,
-// los van de ESM-build in dist/.
+// Zet gevoelige waarden dus in .env naast dit bestand.
 
 module.exports = {
   apps: [
