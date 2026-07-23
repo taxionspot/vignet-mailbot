@@ -10,6 +10,10 @@
 //
 // Kosten: een handvol modelaanroepen, orde grootte een paar cent.
 
+// De .env inlezen, want dit script draait buiten de gewone lus om en die laadt
+// hem normaal via config.ts.
+import "dotenv/config";
+
 import { stelOpKern } from "../src/compose.js";
 import { controleerConceptKern } from "../src/verify.js";
 import { bouwFeitenBlok } from "../src/feiten.js";
