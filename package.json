@@ -1,0 +1,28 @@
+{
+  "name": "vignet-mailbot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonome e-mailbot voor VignetteHub: leest klantmails via IMAP, beantwoordt in de taal van de klant en annuleert plus refundt orders die nog niet zijn ingekocht.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "eenmalig": "tsx src/index.ts --eenmalig"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "imapflow": "^1.5.0",
+    "mailparser": "^3.9.14"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.0"
+  }
+}

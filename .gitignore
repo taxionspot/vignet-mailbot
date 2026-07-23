@@ -1,0 +1,22 @@
+# Afhankelijkheden en build-output
+node_modules/
+dist/
+
+# Geheimen: NOOIT committen
+.env
+.env.*
+!.env.example
+
+# Cap-tellers en overige runtime-state op schijf
+data/
+
+# Logs
+logs/
+*.log
+
+# OS- en editor-rommel
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.tsbuildinfo
