@@ -94,6 +94,25 @@ const MAILBOT_ENABLED = schakelaar("MAILBOT_ENABLED", true);
 const MAILBOT_SEND = schakelaar("MAILBOT_SEND", true);
 const MAILBOT_REFUND = schakelaar("MAILBOT_REFUND", true);
 
+// Vierde schakelaar (besluit Sabur 24-07): stuurt de bot een korte
+// ontvangstbevestiging als hij zelf niet verder kan en naar Sabur escaleert?
+// Zonder deze bevestiging blijft het voor de klant stil tot Sabur antwoordt.
+const MAILBOT_ONTVANGSTBEVESTIGING = schakelaar("MAILBOT_ONTVANGSTBEVESTIGING", true);
+
+// Mag de bot zelf om een ordernummer of kenteken vragen als hij de bestelling
+// niet kan vinden? Staat dit uit, dan gaat zo'n mail meteen naar Sabur (het
+// oude gedrag van voor 24-07).
+const MAILBOT_ZELF_DOORVRAGEN = schakelaar("MAILBOT_ZELF_DOORVRAGEN", true);
+
+// Eist de bot bewijs (DMARC- of DKIM-pass) dat het afzenderadres echt is,
+// voordat hij mailt naar iemand die NIET aan een bestelling te koppelen is?
+// Staat dit aan, dan kan niemand met een vervalst From-adres onze bot post
+// laten sturen naar een onschuldige derde. Voor klanten met een gevonden
+// bestelling en kloppende identiteit verandert er niets.
+// Zet dit alleen uit als blijkt dat de mailserver geen Authentication-Results
+// meestuurt; dan blokkeert de poort namelijk ook echte klanten.
+const MAILBOT_EIS_AUTHENTICATIE = schakelaar("MAILBOT_EIS_AUTHENTICATIE", true);
+
 const POLL_SECONDEN = geheelGetal("POLL_SECONDEN", 30, 5, 3600);
 const AFZENDER_NAAM = optioneel("AFZENDER_NAAM", "Nina");
 
@@ -105,16 +124,30 @@ const CAP_REFUNDS_PER_DAG = geheelGetal("CAP_REFUNDS_PER_DAG", 10, 1, 10000);
 // In euro's ingesteld, intern in centen bewaard.
 const CAP_REFUND_EUR_PER_DAG = geheelGetal("CAP_REFUND_EUR_PER_DAG", 500, 1, 1000000);
 
-// Vertrouwensdrempel voor de classificatie (spec sectie 8: onder 0,75 = mens_nodig).
-const VERTROUWEN_DREMPEL_RUW = (process.env.VERTROUWEN_DREMPEL ?? "").trim();
-let VERTROUWEN_DREMPEL = 0.75;
-if (VERTROUWEN_DREMPEL_RUW) {
-  const n = Number(VERTROUWEN_DREMPEL_RUW);
+// Vertrouwensdrempels voor de classificatie. Sinds 24-07 gesplitst (besluit
+// Sabur): het geldpad en het juridische pad blijven streng op 0,75, terwijl een
+// informatieve vraag (status, uitleg, bewijs kwijt) al vanaf 0,45 zelfstandig
+// beantwoord wordt. Daar valt niets te verliezen: die antwoorden komen
+// uitsluitend uit de databasefeiten en de kennisbank, en verify.ts keurt elk
+// bedrag af dat niet letterlijk in de feiten staat.
+function komma(naam: string, standaard: number): number {
+  const ruw = (process.env[naam] ?? "").trim();
+  if (!ruw) return standaard;
+  const n = Number(ruw.replace(",", "."));
   if (!Number.isFinite(n) || n < 0 || n > 1) {
-    ongeldig.push(`VERTROUWEN_DREMPEL moet tussen 0 en 1 liggen (kreeg "${VERTROUWEN_DREMPEL_RUW}")`);
-  } else {
-    VERTROUWEN_DREMPEL = n;
+    ongeldig.push(`${naam} moet tussen 0 en 1 liggen (kreeg "${ruw}")`);
+    return standaard;
   }
+  return n;
+}
+
+const VERTROUWEN_DREMPEL = komma("VERTROUWEN_DREMPEL", 0.75);
+const VERTROUWEN_DREMPEL_INFO = komma("VERTROUWEN_DREMPEL_INFO", 0.45);
+
+if (VERTROUWEN_DREMPEL_INFO > VERTROUWEN_DREMPEL) {
+  ongeldig.push(
+    `VERTROUWEN_DREMPEL_INFO (${VERTROUWEN_DREMPEL_INFO}) mag niet hoger zijn dan VERTROUWEN_DREMPEL (${VERTROUWEN_DREMPEL}); de informatieve drempel hoort de soepele te zijn`
+  );
 }
 
 // IMAP-mapnamen. Zoho gebruikt "/" als delimiter, maar imapflow zet dat zelf om.
@@ -194,11 +227,14 @@ export const config = {
   },
   escalatieEmail: ESCALATIE_EMAIL,
   afzenderNaam: AFZENDER_NAAM,
-  // De drie noodremmen.
+  // De drie noodremmen, plus twee gedragsschakelaars.
   schakelaars: {
     enabled: MAILBOT_ENABLED,
     send: MAILBOT_SEND,
     refund: MAILBOT_REFUND,
+    ontvangstbevestiging: MAILBOT_ONTVANGSTBEVESTIGING,
+    zelfDoorvragen: MAILBOT_ZELF_DOORVRAGEN,
+    eisAuthenticatie: MAILBOT_EIS_AUTHENTICATIE,
   },
   poll: {
     seconden: POLL_SECONDEN,
@@ -211,6 +247,7 @@ export const config = {
     refundCentenPerDag: CAP_REFUND_EUR_PER_DAG * 100,
   },
   vertrouwenDrempel: VERTROUWEN_DREMPEL,
+  vertrouwenDrempelInfo: VERTROUWEN_DREMPEL_INFO,
   mappen: {
     inbox: MAP_INBOX,
     afgehandeld: MAP_AFGEHANDELD,

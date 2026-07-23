@@ -94,6 +94,25 @@ export const ESCALATIE_INTENTS: readonly Intent[] = [
   "mens_nodig",
 ];
 
+/**
+ * Intents die zonder gevonden bestelling niet zinnig te beantwoorden zijn. Bij
+ * deze vier vraagt de bot eerst zelf om het ordernummer of het kenteken in
+ * plaats van meteen naar Sabur te escaleren (besluit Sabur 24-07).
+ *
+ * product_vraag staat hier bewust NIET in: een algemene vraag over een vignet,
+ * een land of de geldigheid is prima te beantwoorden uit de kennisbank, ook
+ * zonder bestelling. Dat was voor 24-07 de grootste bron van onnodige
+ * escalaties.
+ *
+ * Deze lijst is de enige bron van waarheid; compose.ts leest hem mee.
+ */
+export const ORDER_GEBONDEN_INTENTS: readonly Intent[] = [
+  "status_vraag",
+  "annuleren",
+  "bewijs_kwijt",
+  "kenteken_fout",
+];
+
 // ---------------------------------------------------------------------------
 // Inkomende mail
 // ---------------------------------------------------------------------------
@@ -292,6 +311,14 @@ export interface OpstelInvoer {
   doel: ConceptDoel;
   /** Ondertekening, uit config (standaard Nina). */
   afzenderNaam: string;
+  /**
+   * Mag de bot bij een ordergebonden vraag zonder gevonden bestelling zelf om
+   * het ordernummer of het kenteken vragen? Standaard ja. De lus zet dit op
+   * false als hij dat in deze thread al eens gedaan heeft, of als de klant een
+   * VH-nummer noemde dat niet bestaat: dan heeft doorvragen geen zin en kijkt
+   * een mens ernaar.
+   */
+  magOrderVragen?: boolean;
 }
 
 export interface Concept {

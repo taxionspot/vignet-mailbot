@@ -30,10 +30,13 @@ import {
   MODEL_OPSTELLEN,
   type ClaudeVerzoek,
 } from "../src/claude";
-import { classificeerKern } from "../src/classify";
+import { classificeerKern, verwerkClassificatieAntwoord } from "../src/classify";
 import { stelOpKern } from "../src/compose";
-import { controleerConceptKern } from "../src/verify";
+import { bedragenInTekst, controleerConceptKern } from "../src/verify";
 import { bouwFeitenBlok } from "../src/feiten";
+import { opstellenSysteem } from "../src/prompts/opstellen";
+import { kennisBlok } from "../src/prompts/kennis";
+import { ANNULEER_ORDERVRAAG_TEKST } from "../src/teksten";
 import type { BotIntent, BotTaal } from "../src/prompts/classificatie";
 
 // ---------------------------------------------------------------------------
@@ -42,8 +45,12 @@ import type { BotIntent, BotTaal } from "../src/prompts/classificatie";
 let klassOutput: Record<string, unknown> = {};
 let opstelTekst = "";
 
+// Onderscheid op de TOOL, niet op de modelnaam: sinds beide rollen standaard
+// hetzelfde model gebruiken (opus-4-8) matchte elke aanroep de eerste tak en
+// kreeg de opsteller een leeg antwoord terug. Alleen de classificatie stuurt
+// een tool mee, dus dat is het betrouwbare onderscheid.
 zetClaudeStub((verzoek: ClaudeVerzoek) => {
-  if (verzoek.model === MODEL_CLASSIFICATIE) {
+  if (verzoek.tool) {
     return stubAntwoord(MODEL_CLASSIFICATIE, { toolInvoer: klassOutput });
   }
   return stubAntwoord(MODEL_OPSTELLEN, { tekst: opstelTekst });
@@ -123,13 +130,18 @@ async function run(): Promise<void> {
 
   // -- 3. Andermans order laten annuleren ---------------------------------
   // Zonder gevonden en gekoppelde order (feiten.bekend=false) stelt de bot
-  // geen annulering op maar escaleert, dus niemand annuleert een vreemde order.
+  // geen annulering op. Sinds 24-07 vraagt hij eerst zelf om het ordernummer;
+  // zodra dat al gebeurd is (magOrderVragen=false) escaleert hij alsnog. In
+  // geen van beide gevallen komt er een annulering of een bedrag uit.
   {
     const geenOrder = bouwFeitenBlok(null);
+    opstelTekst = "";
     const concept = await stelOpKern(
       "annuleren",
       { van: "vreemde@ergens.nl", onderwerp: "Annuleer VH-XXXXX", tekst: "annuleer order VH-XXXXX van iemand anders" },
       geenOrder,
+      undefined,
+      { magOrderVragen: false },
     );
     check("3 annuleren zonder gekoppelde order escaleert", concept.escaleren && concept.tekst === "", JSON.stringify(concept));
   }
@@ -283,6 +295,169 @@ async function run(): Promise<void> {
     const concept = await stelOpKern("status_vraag", { van: ORDER.email, onderwerp: "Waar blijft mijn vignet", tekst: "Waar blijft mijn vignet?" }, FEITEN);
     const r = controleerConceptKern({ tekst: concept.tekst, taal: concept.taal }, TOEGESTAAN);
     check("15 legitiem statusantwoord slaagt door de controle", !concept.escaleren && r.ok, JSON.stringify({ escaleren: concept.escaleren, r }));
+  }
+
+  // -- 16. Minder escaleren (wijziging 24-07) ----------------------------
+  // De bot moet zoveel mogelijk zelf doen. Deze blok bewaakt dat de nieuwe
+  // soepelheid alleen geldt waar niets onomkeerbaars gebeurt, en dat het
+  // geldpad even streng blijft als daarvoor.
+  {
+    // Informatieve intents mogen laag scoren zonder naar een mens te gaan.
+    const info = verwerkClassificatieAntwoord(
+      stubAntwoord(MODEL_CLASSIFICATIE, {
+        toolInvoer: { intent: "status_vraag", taal: "nl", vertrouwen: 0.5, samenvatting: "waar blijft het" },
+      }),
+    );
+    check(
+      "16a status_vraag met vertrouwen 0,50 blijft status_vraag",
+      info.intent === "status_vraag" && !info.bijgestuurd,
+      JSON.stringify(info),
+    );
+
+    // Het geldpad blijft streng op dezelfde 0,75 als voorheen.
+    const geld = verwerkClassificatieAntwoord(
+      stubAntwoord(MODEL_CLASSIFICATIE, {
+        toolInvoer: { intent: "annuleren", taal: "nl", vertrouwen: 0.5, samenvatting: "wil geld terug" },
+      }),
+    );
+    check(
+      "16b annuleren met vertrouwen 0,50 gaat naar mens_nodig",
+      geld.intent === "mens_nodig" && geld.bijgestuurd,
+      JSON.stringify(geld),
+    );
+
+    const juridisch = verwerkClassificatieAntwoord(
+      stubAntwoord(MODEL_CLASSIFICATIE, {
+        toolInvoer: { intent: "klacht_juridisch", taal: "nl", vertrouwen: 0.7, samenvatting: "advocaat" },
+      }),
+    );
+    check(
+      "16c klacht_juridisch met vertrouwen 0,70 gaat naar mens_nodig",
+      juridisch.intent === "mens_nodig",
+      JSON.stringify(juridisch),
+    );
+  }
+  {
+    // Algemene vraag zonder bestelling: gewoon beantwoorden, niet escaleren.
+    const geenOrder = bouwFeitenBlok(null);
+    opstelTekst =
+      "In Tsjechie zijn alle vignetten direct geldig na registratie. U kunt tot 30 dagen vooruit boeken. Nina, VignetteHub.";
+    const concept = await stelOpKern(
+      "product_vraag",
+      { van: "iemand@example.com", onderwerp: "vraag", tekst: "Is een Tsjechisch vignet meteen geldig?" },
+      geenOrder,
+    );
+    check(
+      "16d product_vraag zonder bestelling wordt zelf beantwoord",
+      !concept.escaleren && concept.tekst.length > 20,
+      JSON.stringify(concept),
+    );
+  }
+  {
+    // Ordergebonden vraag zonder bestelling: eerst zelf om het ordernummer
+    // vragen, niet meteen naar Sabur.
+    const geenOrder = bouwFeitenBlok(null);
+    opstelTekst =
+      "Ik kan uw bestelling nog niet vinden bij dit e-mailadres. Kunt u mij het ordernummer sturen dat met VH begint, of het kenteken? Nina, VignetteHub.";
+    const concept = await stelOpKern(
+      "status_vraag",
+      { van: "klant@example.com", onderwerp: "waar blijft mijn vignet", tekst: "Waar blijft mijn vignet?" },
+      geenOrder,
+      undefined,
+      { magOrderVragen: true },
+    );
+    check(
+      "16e status_vraag zonder bestelling vraagt zelf om het ordernummer",
+      !concept.escaleren && concept.tekst.includes("ordernummer"),
+      JSON.stringify(concept),
+    );
+  }
+  {
+    // ... maar als dat al gebeurd is, escaleert hij alsnog.
+    const geenOrder = bouwFeitenBlok(null);
+    opstelTekst = "wat dan ook";
+    const concept = await stelOpKern(
+      "status_vraag",
+      { van: "klant@example.com", onderwerp: "nogmaals", tekst: "Waar blijft mijn vignet?" },
+      geenOrder,
+      undefined,
+      { magOrderVragen: false },
+    );
+    check(
+      "16f tweede keer zonder bestelling escaleert alsnog",
+      concept.escaleren && concept.tekst === "",
+      JSON.stringify(concept),
+    );
+  }
+  {
+    // De harde poort blijft staan: zonder bestelling is er geen enkel bedrag
+    // toegestaan, dus een antwoord met een bedrag wordt afgekeurd.
+    const geenOrder = bouwFeitenBlok(null);
+    const r = controleerConceptKern(
+      { tekst: "Wij betalen u 24,55 EUR terug. Nina, VignetteHub.", taal: "nl" },
+      geenOrder.bedragenCents,
+    );
+    check(
+      "16g bedrag noemen zonder bestelling wordt afgekeurd",
+      !r.ok && r.code === "bedrag_niet_toegestaan",
+      JSON.stringify({ r, toegestaan: geenOrder.bedragenCents }),
+    );
+  }
+
+  // -- 17. De twee kritieke defecten uit de review van 24-07 --------------
+  {
+    // KRITIEK 1 was: de systeemprompt gaf het model bij annuleren zonder
+    // gevonden bestelling nog steeds de opdracht "bevestig dat de annulering
+    // geregeld is en het volledige bedrag terugkomt". Die instructie hoort
+    // alleen in de normale situatie te staan, met een bestelling erbij.
+    const zonderOrder = opstellenSysteem("annuleren", "nl", null, "order_onbekend");
+    const metOrder = opstellenSysteem("annuleren", "nl", "at", "normaal");
+    const belofte = "bevestig dan dat de annulering geregeld is";
+    check(
+      "17a annuleerprompt zonder bestelling bevat GEEN bevestig-instructie",
+      !zonderOrder.includes(belofte),
+      zonderOrder.slice(zonderOrder.indexOf("DEZE MAIL"), zonderOrder.indexOf("DEZE MAIL") + 300),
+    );
+    check(
+      "17b annuleerprompt MET bestelling bevat die instructie nog wel",
+      metOrder.includes(belofte),
+      "de normale situatie moet ongewijzigd blijven",
+    );
+    check(
+      "17c algemene modus bevat de intent-instructie ook niet",
+      !opstellenSysteem("status_vraag", "nl", null, "algemeen").includes(
+        "Vertel in gewone taal wat de stand van zaken is",
+      ),
+      "modus algemeen heeft geen feitenset om de stand uit af te leiden",
+    );
+  }
+  {
+    // De vaste annuleer-ordervraag mag in geen enkele taal iets bevestigen of
+    // een bedrag noemen: hij vraagt alleen om gegevens.
+    const verdacht = /(terugbetaal|terugbetaling|refund|geannuleerd|annulering is|erstattet|storniert|rembours|annulee|zwrot|rimbors|rambursat|vraceni|visszateri|reembols|iade)/i;
+    let fout = "";
+    for (const [taal, tekst] of Object.entries(ANNULEER_ORDERVRAAG_TEKST)) {
+      if (verdacht.test(tekst)) fout = `${taal}: ${tekst}`;
+      if (bedragenInTekst(tekst).length > 0) fout = `${taal} noemt een bedrag`;
+    }
+    check("17d vaste annuleer-ordervraag belooft niets in geen enkele taal", fout === "", fout);
+    check(
+      "17e vaste annuleer-ordervraag bestaat in alle 11 talen",
+      Object.keys(ANNULEER_ORDERVRAAG_TEKST).length === 11,
+      String(Object.keys(ANNULEER_ORDERVRAAG_TEKST).length),
+    );
+  }
+  {
+    // KRITIEK 2 was: buiten het geldpad werd nergens gecontroleerd of het
+    // afzenderadres echt is. De kennisbank mag bovendien geen bedragen
+    // bevatten, want verify keurt die af en dan escaleert de mail alsnog.
+    const blok = kennisBlok(null);
+    check(
+      "17f kennisbank bevat geen enkel bedrag",
+      bedragenInTekst(blok).length === 0,
+      JSON.stringify(bedragenInTekst(blok)),
+    );
+    check("17g kennisbank noemt de merknaam Taxionspot nergens", !/taxionspot/i.test(blok), "merkregel");
   }
 
   // ---------------------------------------------------------------------
