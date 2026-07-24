@@ -46,7 +46,7 @@ export const LANDEN_KENNIS: Record<string, LandKennis> = {
     naam: "Oostenrijk",
     operatorNaam: "ASFINAG",
     operatorUrl: "https://shop.asfinag.at",
-    checkUrl: "https://shop.asfinag.at/en/evignettes/query",
+    checkUrl: "https://evidenz.asfinag.at/",
     feiten: [
       "Producten: 1 dag, 10 dagen, 2 maanden en jaarvignet.",
       "Het 1-daags en 10-daags vignet zijn direct geldig, ook als de klant vandaag als ingangsdatum kiest.",
