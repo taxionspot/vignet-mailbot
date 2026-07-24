@@ -34,6 +34,8 @@ export interface RuweMail {
 export class Postbus {
   private client: ImapFlow | null = null;
   private verbindtBezig = false;
+  // Pad van de map Verzonden (special-use \Sent), eenmalig opgezocht.
+  private verzondenPad: string | null = null;
 
   // Nieuwe imapflow-client opzetten. logger:false, want we loggen zelf; een
   // eigen error-listener voorkomt dat een socketfout het proces omlegt.
@@ -178,6 +180,27 @@ export class Postbus {
     } finally {
       lock.release();
     }
+  }
+
+  /**
+   * Zoekt de echte map Verzonden op via de special-use-vlag \Sent, zodat een
+   * kopie van eigen uitgaande post daar terechtkomt en Sabur hem in zijn
+   * normale Verzonden-vak ziet. Terugval op "Sent" (de Zoho-standaard).
+   */
+  async vindVerzondenMap(): Promise<string> {
+    if (this.verzondenPad) return this.verzondenPad;
+    await this.zorgVerbonden();
+    const client = this.client;
+    if (!client) return "Sent";
+    try {
+      const mappen = await client.list();
+      const sent = mappen.find((m) => (m.specialUse ?? "").toLowerCase() === "\\sent");
+      this.verzondenPad = sent?.path ?? "Sent";
+    } catch (err) {
+      log.warn("Kon de map Verzonden niet opzoeken, terugval op Sent", err);
+      this.verzondenPad = "Sent";
+    }
+    return this.verzondenPad;
   }
 
   /** Netjes afsluiten bij een noodstop. */

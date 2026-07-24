@@ -113,6 +113,13 @@ const MAILBOT_ZELF_DOORVRAGEN = schakelaar("MAILBOT_ZELF_DOORVRAGEN", true);
 // meestuurt; dan blokkeert de poort namelijk ook echte klanten.
 const MAILBOT_EIS_AUTHENTICATIE = schakelaar("MAILBOT_EIS_AUTHENTICATIE", true);
 
+// Legt de bot kopieen van onze eigen uitgaande mail (het BCC-archief van de
+// app) in de map Verzonden, zodat Sabur in zijn normale Verzonden-vak ziet wat
+// er de deur uit ging? Herkenning gebeurt op de X-VH-Uitgaand-header en op het
+// Delivered-To-adres hieronder.
+const MAILBOT_VERZONDEN_ARCHIEF = schakelaar("MAILBOT_VERZONDEN_ARCHIEF", true);
+const ARCHIEF_ADRES = optioneel("ARCHIEF_ADRES", "sent-archief@vignettehub.com").toLowerCase();
+
 const POLL_SECONDEN = geheelGetal("POLL_SECONDEN", 30, 5, 3600);
 const AFZENDER_NAAM = optioneel("AFZENDER_NAAM", "Nina");
 
@@ -235,7 +242,9 @@ export const config = {
     ontvangstbevestiging: MAILBOT_ONTVANGSTBEVESTIGING,
     zelfDoorvragen: MAILBOT_ZELF_DOORVRAGEN,
     eisAuthenticatie: MAILBOT_EIS_AUTHENTICATIE,
+    verzondenArchief: MAILBOT_VERZONDEN_ARCHIEF,
   },
+  archiefAdres: ARCHIEF_ADRES,
   poll: {
     seconden: POLL_SECONDEN,
   },

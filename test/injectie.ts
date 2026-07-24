@@ -36,7 +36,8 @@ import { bedragenInTekst, controleerConceptKern } from "../src/verify";
 import { bouwFeitenBlok, statusInGewoneTaal } from "../src/feiten";
 import { opstellenSysteem } from "../src/prompts/opstellen";
 import { kennisBlok } from "../src/prompts/kennis";
-import { ANNULEER_ORDERVRAAG_TEKST } from "../src/teksten";
+import { AANHEF, AFSLUITGROET, ANNULEER_ORDERVRAAG_TEKST, metOndertekening } from "../src/teksten";
+import { isVerzondenKopie } from "../src/parse";
 import type { BotIntent, BotTaal } from "../src/prompts/classificatie";
 
 // ---------------------------------------------------------------------------
@@ -516,6 +517,51 @@ async function run(): Promise<void> {
       "18f bewijs_kwijt-instructie noemt de controlelink en geen bewijs-PDF",
       /controlelink/i.test(prompt) && !/bewijs-PDF/i.test(prompt),
       "instructie klopt niet met de nieuwe leverwerkelijkheid",
+    );
+  }
+
+  // -- 19. Nette mail + Verzonden-archief (wijziging 24-07, tweede ronde) ---
+  {
+    // Vaste teksten krijgen aanhef en afsluitgroet in de taal van de klant.
+    const nl = metOndertekening("Kerntekst.", "Nina", "VignetteHub", "nl");
+    const de = metOndertekening("Kerntekst.", "Nina", "VignetteHub", "de");
+    check(
+      "19a vaste tekst begint met de aanhef en eindigt met groet, naam en merk",
+      nl.startsWith("Goedendag,") && nl.includes("Met vriendelijke groet,") && nl.endsWith("Nina\nVignetteHub"),
+      nl,
+    );
+    check(
+      "19b aanhef en groet volgen de taal (Duits)",
+      de.startsWith("Guten Tag,") && de.includes("Mit freundlichen Gruessen,"),
+      de,
+    );
+    check(
+      "19c aanhef en afsluitgroet bestaan in alle 11 talen",
+      Object.keys(AANHEF).length === 11 && Object.keys(AFSLUITGROET).length === 11,
+      `${Object.keys(AANHEF).length}/${Object.keys(AFSLUITGROET).length}`,
+    );
+  }
+  {
+    // Kopieen van eigen uitgaande post (BCC-archief) worden herkend op de
+    // X-VH-Uitgaand-header of het Delivered-To-adres; klantmail niet.
+    const basisHeaders = {
+      autoSubmitted: null, autoreply: null, precedence: null, listId: null,
+      listUnsubscribe: null, returnPath: null, failedRecipients: null, contentType: null,
+    };
+    const metHeader = { headers: { ...basisHeaders, overig: { "x-vh-uitgaand": "1" } } };
+    const metDelivered = { headers: { ...basisHeaders, overig: { "delivered-to": "sent-archief@vignettehub.com" } } };
+    const klant = { headers: { ...basisHeaders, overig: { "delivered-to": "anna@vignettehub.com" } } };
+    check(
+      "19d kopie met X-VH-Uitgaand wordt herkend",
+      isVerzondenKopie(metHeader as never, "sent-archief@vignettehub.com"),
+    );
+    check(
+      "19e kopie via Delivered-To archiefadres wordt herkend",
+      isVerzondenKopie(metDelivered as never, "sent-archief@vignettehub.com"),
+    );
+    check(
+      "19f gewone klantmail wordt NIET als kopie gezien",
+      !isVerzondenKopie(klant as never, "sent-archief@vignettehub.com"),
     );
   }
 

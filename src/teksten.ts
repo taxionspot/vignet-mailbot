@@ -72,11 +72,46 @@ export const ONTVANGST_ONDERWERP: Record<BotTaal, string> = {
 };
 
 /**
- * Zet de ondertekening onder een vaste tekst, in dezelfde vorm die het model
- * gebruikt: naam op een eigen regel, merk eronder.
+ * Neutrale aanhef per taal. De vaste teksten kennen de naam van de klant niet,
+ * dus dit is bewust een groet zonder naam.
  */
-export function metOndertekening(tekst: string, naam: string, merk: string): string {
-  return `${tekst}\n\n${naam}\n${merk}`;
+export const AANHEF: Record<BotTaal, string> = {
+  nl: "Goedendag,",
+  de: "Guten Tag,",
+  fr: "Bonjour,",
+  en: "Hello,",
+  pl: "Dzien dobry,",
+  it: "Buongiorno,",
+  ro: "Buna ziua,",
+  cs: "Dobry den,",
+  hu: "Jo napot kivanok,",
+  es: "Buenos dias,",
+  tr: "Merhaba,",
+};
+
+/** Afsluitgroet per taal, boven de naam en het merk. */
+export const AFSLUITGROET: Record<BotTaal, string> = {
+  nl: "Met vriendelijke groet,",
+  de: "Mit freundlichen Gruessen,",
+  fr: "Cordialement,",
+  en: "Kind regards,",
+  pl: "Z wyrazami szacunku,",
+  it: "Cordiali saluti,",
+  ro: "Cu stima,",
+  cs: "S pozdravem,",
+  hu: "Udvozlettel,",
+  es: "Un cordial saludo,",
+  tr: "Saygilarimizla,",
+};
+
+/**
+ * Maakt van een vaste kerntekst een complete nette mail: aanhef erboven,
+ * afsluitgroet met naam en merk eronder, alles in de taal van de klant.
+ */
+export function metOndertekening(tekst: string, naam: string, merk: string, taal?: string | null): string {
+  const aanhef = kiesTekst(AANHEF, taal ?? "en");
+  const groet = kiesTekst(AFSLUITGROET, taal ?? "en");
+  return `${aanhef}\n\n${tekst}\n\n${groet}\n${naam}\n${merk}`;
 }
 
 /** Vertaalde tekst met terugval op Engels. */

@@ -11,7 +11,7 @@
 
 import { config } from "./config.js";
 import { log } from "./log.js";
-import { parseMail } from "./parse.js";
+import { parseMail, isVerzondenKopie } from "./parse.js";
 import { Postbus } from "./imap.js";
 import { geenMatch, matchOrder, type MatchResultaat } from "./match.js";
 import { ApiFout } from "./api.js";
@@ -258,7 +258,8 @@ async function escaleerNaarSabur(
   const tekst = metOndertekening(
     kiesTekst(ONTVANGST_TEKST, taal),
     config.afzenderNaam,
-    merkNaam()
+    merkNaam(),
+    taal
   );
   const onderwerp = reOnderwerpVan(mail, taal);
 
@@ -815,7 +816,8 @@ async function verwerkAnnuleerZonderOrder(
         tekst: metOndertekening(
           kiesTekst(ANNULEER_ORDERVRAAG_TEKST, taal),
           config.afzenderNaam,
-          merkNaam()
+          merkNaam(),
+          taal
         ),
         taal: naarLocale(taal),
       };
@@ -1328,6 +1330,18 @@ async function pollRonde(postbus: Postbus): Promise<void> {
     } catch (err) {
       log.fout(`Parsen mislukt voor uid ${ruw.uid}, naar Bot/Fout`, err);
       await veiligVerplaats(postbus, ruw.uid, config.mappen.fout);
+      continue;
+    }
+
+    // Kopie van onze EIGEN uitgaande post (BCC-archief van de app): niet
+    // verwerken maar in de map Verzonden leggen, zodat Sabur in zijn normale
+    // Verzonden-vak ziet wat er de deur uit ging. Dit staat VOOR de
+    // lus-beveiliging: die zou de kopie (eigen domein) anders in Bot/Afgehandeld
+    // laten verdwijnen.
+    if (config.schakelaars.verzondenArchief && isVerzondenKopie(mail, config.archiefAdres)) {
+      const verzondenMap = await postbus.vindVerzondenMap();
+      await veiligVerplaats(postbus, ruw.uid, verzondenMap);
+      log.info(`Verzonden-kopie in ${verzondenMap} gelegd: ${mail.onderwerp}`);
       continue;
     }
 

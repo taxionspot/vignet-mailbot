@@ -30,11 +30,14 @@ import {
   type ClaudeKosten,
 } from "./claude.js";
 import {
+  afzenderNaam,
+  merkNaam,
   opstellenSysteem,
   opstellenGebruiker,
   NIET_WETEN_SENTINEL,
   type Opstelmodus,
 } from "./prompts/opstellen.js";
+import { metOndertekening } from "./teksten.js";
 import { isIntent, type BotIntent, type BotTaal, isTaal } from "./prompts/classificatie.js";
 import { bouwFeitenBlok, alsObject, leesTekst, type FeitenBlok } from "./feiten.js";
 import {
@@ -239,10 +242,14 @@ export async function stelOpKern(
 
 function mailUitInkomend(mail: InkomendeMail): MailKern {
   const bron = alsObject(mail) ?? {};
+  // InkomendeMail draagt de afzender in vanAdres en de voor het model
+  // geschoonde tekst in tekstSchoon; die staan hier vooraan. De weergavenaam
+  // gaat mee zodat de opsteller een nette aanhef met naam kan schrijven; hij
+  // staat in het datablok en is dus gewoon data, geen instructie.
+  const adres = leesTekst(bron, "vanAdres", "van", "from", "afzender");
+  const naam = leesTekst(bron, "vanNaam");
   return {
-    // InkomendeMail draagt de afzender in vanAdres en de voor het model
-    // geschoonde tekst in tekstSchoon; die staan hier vooraan.
-    van: leesTekst(bron, "vanAdres", "van", "from", "afzender"),
+    van: naam && adres ? `${naam} <${adres}>` : adres,
     onderwerp: leesTekst(bron, "onderwerp", "subject", "titel"),
     tekst: leesTekst(bron, "tekstSchoon", "tekstVolledig", "tekst", "body", "bericht", "inhoud", "text"),
   };
@@ -280,11 +287,17 @@ export async function stelOp(invoer: OpstelInvoer): Promise<Concept> {
   const ruweTaal = invoer.classificatie?.taal;
   const taal: BotTaal = isTaal(ruweTaal) ? ruweTaal : "en";
 
-  // Identiteit klopt niet: nooit ordergegevens, alleen de vaste privacy-tekst.
+  // Identiteit klopt niet: nooit ordergegevens, alleen de vaste privacy-tekst,
+  // wel netjes aangekleed met aanhef en afsluitgroet in de taal van de klant.
   if (invoer.identiteitMismatch) {
     return {
       onderwerp: reOnderwerp(invoer.mail?.onderwerp ?? ""),
-      tekst: IDENTITEIT_TEKST[taal] ?? IDENTITEIT_TEKST.en,
+      tekst: metOndertekening(
+        IDENTITEIT_TEKST[taal] ?? IDENTITEIT_TEKST.en,
+        invoer.afzenderNaam || afzenderNaam(),
+        merkNaam(),
+        taal
+      ),
       taal: naarLocale(taal),
     };
   }
