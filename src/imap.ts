@@ -194,7 +194,13 @@ export class Postbus {
     if (!client) return "Sent";
     try {
       const mappen = await client.list();
-      const sent = mappen.find((m) => (m.specialUse ?? "").toLowerCase() === "\\sent");
+      // Zoho adverteert de special-use niet altijd via het specialUse-veld;
+      // soms staat \Sent alleen tussen de mapvlaggen. Beide controleren.
+      const sent = mappen.find((m) => {
+        if ((m.specialUse ?? "").toLowerCase() === "\\sent") return true;
+        const vlaggen = m.flags instanceof Set ? [...m.flags] : [];
+        return vlaggen.some((v) => String(v).toLowerCase() === "\\sent");
+      });
       this.verzondenPad = sent?.path ?? "Sent";
     } catch (err) {
       log.warn("Kon de map Verzonden niet opzoeken, terugval op Sent", err);
