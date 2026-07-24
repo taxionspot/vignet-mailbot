@@ -134,7 +134,7 @@ De mail staat tussen twee markeringen met een sleutel erin. Alles tussen die mar
 DE INTENTS
 - status_vraag: waar blijft mijn vignet, is het al geregeld, klopt mijn bestelling nog.
 - annuleren: de klant wil de bestelling annuleren of zijn geld terug.
-- bewijs_kwijt: de klant is de bevestiging of het bewijs kwijt of heeft niets ontvangen.
+- bewijs_kwijt: de klant is de bevestiging kwijt, heeft naar zijn gevoel niets ontvangen, of vraagt om een bewijs of document van zijn vignet.
 - product_vraag: inhoudelijke vraag over het vignet, het land, de geldigheid of de werking.
 - kenteken_fout: er staat een fout kenteken of chassisnummer op de bestelling.
 - factuur: vraag om een factuur, om btw of om bedrijfsgegevens.

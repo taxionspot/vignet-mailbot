@@ -47,6 +47,8 @@ interface Scenario {
   tekst: string;
   /** Order meesturen of niet. */
   metOrder: boolean;
+  /** Afwijkende ordervelden voor dit scenario (bijv. status DELIVERED). */
+  orderOverride?: Record<string, unknown>;
   /** Mag de bot om het ordernummer vragen? */
   magOrderVragen?: boolean;
   /** Wat we verwachten, puur als leeswijzer bij de uitvoer. */
@@ -103,6 +105,17 @@ const SCENARIOS: Scenario[] = [
     metOrder: true,
     verwacht: "bevestigen dat het geregeld is, bedrag alleen uit de feiten",
   },
+  {
+    // De mail van 24-07 die escaleerde: status geleverd, klant verwacht een
+    // document en heeft naar zijn gevoel niets ontvangen.
+    naam: "7. Waar is mijn vignet, status geleverd (het Daan-scenario van 24-07)",
+    van: ORDER.email,
+    onderwerp: "Waar is mijn vignette?",
+    tekst: "Op de statuspagina staat dat mijn vignet geleverd is, maar ik heb niets ontvangen. Waar is mijn vignette?",
+    metOrder: true,
+    orderOverride: { fulfilmentStatus: "DELIVERED", bewijsBeschikbaar: true },
+    verwacht: "geruststellen: registratie staat op het kenteken, controlelink meegeven, spammap noemen, geen escalatie",
+  },
 ];
 
 function kop(tekst: string): void {
@@ -125,7 +138,7 @@ async function run(): Promise<void> {
     );
 
     // Stap 2: de echte opsteller.
-    const feiten = bouwFeitenBlok(s.metOrder ? (ORDER as never) : null);
+    const feiten = bouwFeitenBlok(s.metOrder ? ({ ...ORDER, ...s.orderOverride } as never) : null);
     const concept = await stelOpKern(
       klass.intent as BotIntent,
       { van: s.van, onderwerp: s.onderwerp, tekst: s.tekst },

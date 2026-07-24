@@ -35,7 +35,6 @@ import {
   ORDER_GEBONDEN_INTENTS,
   REFUNDBARE_STATUSSEN,
   naarLocale,
-  type ActieOpdracht,
   type AntwoordOpdracht,
   type Classificatie,
   type Concept,
@@ -474,11 +473,15 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
   switch (intent) {
     case "status_vraag":
     case "product_vraag":
+    // bewijs_kwijt was tot 24-07 een resend-actie (bevestiging of bewijs-PDF
+    // opnieuw sturen via de app). Sinds wij namens de klant op zijn eigen
+    // e-mailadres inkopen bestaat er geen bewijsdocument van ons meer: het
+    // officiele portaal mailt de klant rechtstreeks. De bot legt dat nu uit in
+    // een gewoon opgesteld antwoord, met de controlelink uit de kennisbank.
+    case "bewijs_kwijt":
       return await verwerkKlantAntwoordIntent(mail, classificatie, order, match);
     case "kenteken_fout":
       return await verwerkKentekenFout(mail, classificatie, order, match);
-    case "bewijs_kwijt":
-      return await verwerkBewijsKwijt(mail, classificatie, order);
     case "annuleren":
       return await verwerkAnnuleren(mail, classificatie, order, match);
     default: {
@@ -880,77 +883,6 @@ async function verwerkKentekenFout(
     afzenderNaam: config.afzenderNaam,
   };
   return await stelOpEnVerstuur(mail, classificatie, order, invoer);
-}
-
-// bewijs_kwijt: de bevestiging of het bewijs opnieuw sturen. Dat IS het
-// antwoord; geen aparte reply, zo voorkomen we dubbele communicatie.
-async function verwerkBewijsKwijt(
-  mail: InkomendeMail,
-  classificatie: Classificatie,
-  order: OrderFeiten
-): Promise<VerwerkUitkomst> {
-  const regel = basisLog(mail, classificatie, order);
-
-  if (!magVersturen()) {
-    // Schakelaar SEND uit: niets versturen, escaleren zodat Sabur het handmatig doet.
-    const esc = bouwEscalatie(mail, {
-      reden: "verzending_uit",
-      toelichting: `Klant is bevestiging/bewijs kwijt voor ${order.orderToken}, maar MAILBOT_SEND staat uit. Handmatig opnieuw sturen.`,
-      intent: classificatie.intent,
-      vertrouwen: classificatie.vertrouwen,
-      orderToken: order.orderToken,
-    });
-    await voerActieUit(esc);
-    regel.actie = "escalatie_sturen";
-    regel.escalatie = true;
-    regel.escalatieReden = "verzending_uit";
-    regel.bestemming = config.mappen.escalatie;
-    await schrijfLog(regel);
-    return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
-  }
-
-  // Antwoord-caps gelden ook voor een resend (het is een uitgaande klantmail).
-  const cap = magAntwoorden(mail);
-  if (cap.geblokkeerd) {
-    return await capGeblokkeerd(mail, classificatie, order, cap);
-  }
-
-  const wilBewijs = order.fulfilmentStatus === "DELIVERED" && order.bewijsBeschikbaar;
-  const opdracht: ActieOpdracht = {
-    actie: wilBewijs ? "resend_bewijs" : "resend_bevestiging",
-    botMailId: mail.botMailId,
-    orderToken: order.orderToken,
-    afzender: mail.vanAdres,
-  };
-  const res = await voerActieUit(opdracht);
-
-  if (res.ok && res.uitgevoerd) {
-    registreerAntwoord(mail);
-    regel.actie = opdracht.actie;
-    regel.verstuurdAt = new Date().toISOString();
-    regel.bestemming = config.mappen.afgehandeld;
-    regel.melding = res.melding;
-    await schrijfLog(regel);
-    log.info(`${opdracht.actie} voor ${order.orderToken} verstuurd`);
-    return { bestemming: config.mappen.afgehandeld, actie: opdracht.actie };
-  }
-
-  // Mislukt of onbekend: escaleren zodat Sabur het oppakt.
-  const esc = bouwEscalatie(mail, {
-    reden: "actie_mislukt",
-    toelichting: `${opdracht.actie} voor ${order.orderToken} mislukte (${res.fout ?? "onbekend"}). Handmatig opnieuw sturen.`,
-    intent: classificatie.intent,
-    vertrouwen: classificatie.vertrouwen,
-    orderToken: order.orderToken,
-  });
-  await escaleerNaarSabur(mail, esc, classificatie, regel);
-  regel.actie = "escalatie_sturen";
-  regel.escalatie = true;
-  regel.escalatieReden = "actie_mislukt";
-  regel.bestemming = config.mappen.escalatie;
-  regel.fout = res.fout;
-  await schrijfLog(regel);
-  return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
 }
 
 // annuleren: het enige geldpad (spec sectie 6).

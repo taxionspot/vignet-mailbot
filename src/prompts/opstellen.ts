@@ -59,11 +59,11 @@ const AANSPREEK: Partial<Record<BotTaal, string>> = {
 // feitenset; dit stuurt alleen de toon en de richting van het antwoord.
 export const INTENT_INSTRUCTIE: Record<BotIntent, string> = {
   status_vraag:
-    "Vertel in gewone taal wat de stand van zaken is uit de feitenset en verwijs naar de statuslink. Noem NEEDS_ACTION nooit als probleem, dat is voor de klant gewoon de wachtrij.",
+    "Vertel in gewone taal wat de stand van zaken is uit de feitenset en verwijs naar de statuslink. Noem NEEDS_ACTION nooit als probleem, dat is voor de klant gewoon de wachtrij. Is de bestelling geleverd en vraagt de klant waar zijn vignet blijft: stel hem gerust, er komt niets meer per post of per bijlage, het vignet staat al geregistreerd op zijn kenteken. Geef dan de officiele controlelink uit de kennisbank mee en wijs erop dat de bevestiging van het portaal rechtstreeks in zijn eigen mailbox staat, mogelijk in de spammap.",
   annuleren:
     "Pas de annuleerregel toe. Is de bestelling nog niet ingekocht (wachtrij), bevestig dan dat de annulering geregeld is en het volledige bedrag terugkomt. Is er al ingekocht, leg dan uit dat het vignet op het kenteken geregistreerd staat en dat wij het niet kunnen terugdraaien, en verwijs voor een eventuele restitutie naar de operator met naam en link, zonder een uitkomst te beloven.",
   bewijs_kwijt:
-    "Wijs de klant op de statuspagina waar de bevestiging en, zodra geleverd, het bewijs-PDF staan. Is het vignet nog niet geleverd, zeg dan dat het bewijs er komt zodra de registratie klaar is; stuur geen link die nog niet werkt.",
+    "Leg uit dat er geen los vignet-document nodig is: het vignet is de registratie op het kenteken bij het officiele portaal, en die is er al zodra de bestelling geleverd is. Geef bij een geleverde bestelling de officiele controlelink uit de kennisbank zodat de klant zijn kenteken zelf in het systeem van de operator kan zien, en wijs erop dat de bevestiging van het portaal rechtstreeks in zijn mailbox staat, mogelijk in de spammap. Is de bestelling nog niet geleverd, zeg dan wat de stand van zaken is en dat hij de voortgang op zijn statuspagina volgt. Is hij zijn bevestigingsmail van ons kwijt, wijs hem dan op de knop op de statuspagina om die opnieuw te laten sturen.",
   product_vraag:
     "Beantwoord de inhoudelijke vraag zo volledig mogelijk uit de kennisbank en de feitenset. Geef de klant meteen het antwoord, niet alleen een verwijzing. Raakt de vraag meerdere landen of producten, geef dan gewoon de feiten die je hebt.",
   kenteken_fout:

@@ -121,9 +121,9 @@ export function statusInGewoneTaal(status: string, geplandOp: string): string {
     case "NEEDS_ACTION":
       return "in de wachtrij, wij registreren het vignet bij het portaal";
     case "PURCHASED":
-      return "geregistreerd bij het portaal, het bewijs volgt";
+      return "geregistreerd bij het officiele portaal, de levering wordt afgerond";
     case "DELIVERED":
-      return "geleverd, het bewijs staat op de statuspagina";
+      return "geleverd, het vignet staat geregistreerd op het kenteken bij het officiele portaal";
     case "CANCELLED":
       return "geannuleerd";
     case "REFUNDED":

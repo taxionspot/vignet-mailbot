@@ -158,14 +158,14 @@ export function landKennis(code: string | undefined | null): LandKennis | null {
 
 export const ALGEMENE_KENNIS: string[] = [
   "VignetteHub is een onafhankelijke bestelservice. Wij zijn geen overheid, geen toloperator en geen officieel portaal, en wij zijn niet verbonden aan ASFINAG, BAZG, edalnice.gov.cz, eznamka.sk, CNAIR of BG Toll. Wij bestellen namens de klant bij het officiele portaal van het betreffende land en rekenen daar transparante servicekosten voor. Elk vignet dat wij aanbieden kan de klant ook zelf rechtstreeks bij het portaal kopen.",
-  "Wij kopen in naam van de klant en voor rekening van de klant in. De registratie staat op zijn kenteken.",
+  "Wij kopen in naam van de klant en voor rekening van de klant in, met de gegevens die de klant ons geeft: het e-mailadres en het kenteken, en voor Roemenie ook het chassisnummer. De registratie staat op het kenteken van de klant.",
   "Een digitaal vignet is gekoppeld aan het kenteken. Er is geen sticker en geen QR-code die op de auto moet: de handhaving gebeurt met camera's die het kenteken lezen. De klant hoeft dus niets op de ruit te plakken en onderweg niets te tonen.",
   "Het vignet hoort bij het voertuig, niet bij de bestuurder. Iedereen mag met die auto rijden.",
-  "Omdat het vignet aan het kenteken hangt, krijgt de klant geen fysiek bewijs of QR-sticker. Wij sturen wel een eigen bewijs-PDF zodra het vignet geregistreerd en geleverd is; die staat ook op de statuspagina. Printen hoeft niet, bewaren is handig.",
+  "Er wordt niets opgestuurd en er komt geen los vignet-document van ons: het vignet IS de registratie van het kenteken bij het officiele portaal. Omdat wij op het eigen e-mailadres van de klant registreren, stuurt het officiele portaal zijn eigen bevestiging rechtstreeks naar de mailbox van de klant; die mail belandt soms in de spammap. Twijfelt de klant of zijn vignet er echt is, dan is de officiele controlelink van het land het beste bewijs: daar ziet hij zijn eigen kenteken in het systeem van de operator staan. Uitzondering: bij Zwitserland toont die publieke controle het vignet alleen als het bij aankoop publiek zichtbaar is gezet, dus een lege uitkomst betekent daar niet dat er iets mis is.",
   "Wij bedienen zes landen: Oostenrijk, Zwitserland, Tsjechie, Slowakije, Roemenie en Bulgarije.",
   "Er bestaat geen gecombineerd Europees vignet. Elk tolplichtig land op de route vraagt een eigen vignet, dus voor meerdere landen plaatst de klant meerdere bestellingen.",
   "Voor Duitsland is geen vignet nodig: de snelwegen zijn daar voor personenauto's tolvrij. Italie en Kroatie werken met tolpoorten waar per traject betaald wordt, dus ook daar geen vignet.",
-  "Levering duurt normaal ongeveer een kwartier nadat wij een order oppakken. Beloof nooit een exacte tijd, zeg dat het meestal snel klaar is en dat de klant een mail met bewijs krijgt zodra het geregistreerd is. Genoemde levertijden zijn een realistische indicatie, geen garantie.",
+  "Levering duurt normaal ongeveer een kwartier nadat wij een order oppakken. Beloof nooit een exacte tijd, zeg dat het meestal snel klaar is en dat de klant de voortgang live op zijn eigen statuspagina ziet. Genoemde levertijden zijn een realistische indicatie, geen garantie.",
   "Wij helpen het snelst per e-mail. Op werkdagen reageren wij meestal binnen een paar uur en uiterlijk binnen een werkdag. Wij bellen nooit ongevraagd en vragen nooit per e-mail om volledige betaalgegevens.",
 ];
 
@@ -194,12 +194,12 @@ export const BESTELLEN_KENNIS: string[] = [
 export const NA_BESTELLING_KENNIS: string[] = [
   "Een bestelling loopt via de wachtrij of een geplande datum, dan de registratie bij het officiele portaal, dan de levering. Een bestelling kan ook geannuleerd of terugbetaald zijn.",
   "Op de statuspagina ziet de klant drie stappen: bestelling ontvangen, geregistreerd bij het officiele portaal en digitaal vignet geleverd. Staat er dat de bestelling in de wachtrij staat, dan is dat gewoon de normale gang van zaken en geen probleem.",
-  "Zodra de registratie klaar is, krijgt de klant een tweede mail dat zijn vignet actief is op het kenteken, met het bewijs als bijlage en de link naar de officiele kentekencheck van dat land.",
-  "Na levering kan de klant het bewijs als PDF downloaden op zijn statuspagina. Daarvoor werkt die download nog niet, want er is dan nog geen bewijs.",
-  "Op het bewijs staan kenteken, land, product, startdatum, ordernummer en waar bekend de officiele referentie, plus een QR-code naar de eigen statuspagina. Er staan geen prijzen en geen betaalgegevens op.",
+  "Staat de bestelling op geleverd, dan staat het vignet geregistreerd op het kenteken bij het officiele portaal en is het klaar. Er komt dan niets meer per post of per bijlage: de klant hoeft niets te printen en niets te tonen. De officiele bevestiging van het portaal zelf komt rechtstreeks naar het e-mailadres van de klant, soms in de spammap. Wil de klant het zwart op wit zien, geef hem dan de officiele controlelink van het land: daar ziet hij zijn kenteken in het systeem van de operator staan.",
+  "Vraagt een klant met een geleverde bestelling waar zijn vignet blijft, stel hem dan gerust: er hoort niets meer te komen, het vignet staat al op zijn kenteken. Leg dat uit en geef de officiele controlelink mee zodat hij het zelf kan zien.",
+  "Na levering kan de klant op zijn statuspagina een PDF-overzicht van zijn registratie downloaden. Dat is een samenvatting van ons voor de eigen administratie, niet het officiele vignet zelf; het vignet is de registratie bij het portaal. Voor de levering werkt die download nog niet.",
   "De klant kan zijn bevestigingsmail zelf opnieuw laten sturen met een knop op de statuspagina.",
   "De statuslink is persoonlijk en geheim en staat alleen in de eigen e-mails van de klant. Werkt de link niet meer, dan gebruikt de klant de link uit zijn bevestigingsmail.",
-  "De klant kan zijn vignet altijd zelf gratis controleren bij het officiele portaal van het land, zo vaak als hij wil. De link staat in de leveringsmail en hieronder per land.",
+  "De klant kan zijn vignet altijd zelf gratis controleren bij het officiele portaal van het land, zo vaak als hij wil. De controlelinks staan hieronder per land.",
   "De bevestiging per e-mail geldt als betaalbewijs. Wil de klant een factuur op naam of op bedrijfsnaam, dan sturen wij die op verzoek na.",
 ];
 

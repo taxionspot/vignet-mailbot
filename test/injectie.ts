@@ -33,7 +33,7 @@ import {
 import { classificeerKern, verwerkClassificatieAntwoord } from "../src/classify";
 import { stelOpKern } from "../src/compose";
 import { bedragenInTekst, controleerConceptKern } from "../src/verify";
-import { bouwFeitenBlok } from "../src/feiten";
+import { bouwFeitenBlok, statusInGewoneTaal } from "../src/feiten";
 import { opstellenSysteem } from "../src/prompts/opstellen";
 import { kennisBlok } from "../src/prompts/kennis";
 import { ANNULEER_ORDERVRAAG_TEKST } from "../src/teksten";
@@ -458,6 +458,65 @@ async function run(): Promise<void> {
       JSON.stringify(bedragenInTekst(blok)),
     );
     check("17g kennisbank noemt de merknaam Taxionspot nergens", !/taxionspot/i.test(blok), "merkregel");
+  }
+
+  // -- 18. Geen eigen bewijs meer (wijziging 24-07, avond) -----------------
+  // Wij kopen namens de klant in op zijn eigen e-mailadres; het officiele
+  // portaal mailt de klant rechtstreeks. Er bestaat geen bewijs-PDF-belofte
+  // meer en bewijs_kwijt is een gewoon antwoord, geen resend-actie.
+  {
+    const blok = kennisBlok(null);
+    check(
+      "18a kennisbank belooft nergens een bewijs-PDF of bijlage van ons",
+      !/bewijs-PDF|als bijlage|mail met bewijs/i.test(blok),
+      "oude bewijsbelofte gevonden",
+    );
+    check(
+      "18b kennisbank legt uit dat het portaal de klant rechtstreeks mailt (spammap)",
+      /rechtstreeks/i.test(blok) && /spammap/i.test(blok),
+      "uitleg over de portaalbevestiging ontbreekt",
+    );
+  }
+  {
+    check(
+      "18c status DELIVERED noemt de registratie, niet een bewijs",
+      /geregistreerd op het kenteken/.test(statusInGewoneTaal("DELIVERED", "")) &&
+        !/bewijs/.test(statusInGewoneTaal("DELIVERED", "")),
+      statusInGewoneTaal("DELIVERED", ""),
+    );
+    check(
+      "18d status PURCHASED noemt geen bewijs",
+      !/bewijs/.test(statusInGewoneTaal("PURCHASED", "")),
+      statusInGewoneTaal("PURCHASED", ""),
+    );
+  }
+  {
+    // bewijs_kwijt met een GELEVERDE order: gewoon zelf beantwoorden.
+    const geleverd = bouwFeitenBlok({ ...ORDER, fulfilmentStatus: "DELIVERED" } as never);
+    klass({ intent: "bewijs_kwijt", taal: "nl", vertrouwen: 0.8, samenvatting: "waar is mijn vignet, staat op geleverd" });
+    opstelTekst =
+      "Er komt niets meer per post: uw vignet staat al geregistreerd op kenteken AB-123-C bij ASFINAG. U kunt dat zelf zien via de officiele controlepagina. De bevestiging van ASFINAG staat in uw eigen mailbox, kijk ook even in de spammap. Nina, VignetteHub.";
+    const concept = await stelOpKern(
+      "bewijs_kwijt",
+      { van: ORDER.email, onderwerp: "Waar is mijn vignet?", tekst: "Er staat geleverd maar ik heb niets ontvangen." },
+      geleverd,
+    );
+    const r = controleerConceptKern({ tekst: concept.tekst, taal: concept.taal }, geleverd.bedragenCents);
+    check(
+      "18e bewijs_kwijt bij geleverde order wordt zelf beantwoord",
+      !concept.escaleren && r.ok && concept.tekst.length > 20,
+      JSON.stringify({ escaleren: concept.escaleren, r }),
+    );
+  }
+  {
+    // De opstelinstructie voor bewijs_kwijt stuurt op uitleg + controlelink,
+    // niet meer op een bewijs-PDF of een resend.
+    const prompt = opstellenSysteem("bewijs_kwijt", "nl", "at", "normaal");
+    check(
+      "18f bewijs_kwijt-instructie noemt de controlelink en geen bewijs-PDF",
+      /controlelink/i.test(prompt) && !/bewijs-PDF/i.test(prompt),
+      "instructie klopt niet met de nieuwe leverwerkelijkheid",
+    );
   }
 
   // ---------------------------------------------------------------------
