@@ -19,8 +19,12 @@ import { log } from "./log.js";
 import type { EscalatieOpdracht } from "./types.js";
 
 // Zoho-SMTP, dezelfde inlog als IMAP (app-wachtwoord).
+//
+// POORT 587 MET STARTTLS, niet 465: Hetzner blokkeert uitgaand 25, 465 en 2525
+// op deze VM (gemeten 25-07), alleen 587 komt eruit. Op 465 liep de noodroute
+// in een verbindingstime-out van twee minuten.
 const SMTP_HOST = "smtp.zoho.eu";
-const SMTP_POORT = 465;
+const SMTP_POORT = 587;
 
 function escHtml(s: string): string {
   return (s ?? "")
@@ -80,8 +84,14 @@ export async function stuurNoodEscalatie(opdracht: EscalatieOpdracht): Promise<b
     const transport = nodemailer.createTransport({
       host: SMTP_HOST,
       port: SMTP_POORT,
-      secure: true,
+      // 587 begint onversleuteld en schakelt met STARTTLS over; requireTLS
+      // dwingt af dat er nooit in platte tekst verstuurd wordt.
+      secure: false,
+      requireTLS: true,
       auth: { user: config.imap.user, pass: config.imap.password },
+      connectionTimeout: 20000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
     });
     const res = await transport.sendMail({
       from: `VignetteHub mailbot <${config.imap.user}>`,
