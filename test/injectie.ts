@@ -23,6 +23,7 @@
 //   13 en-dash en robotcopy binnensmokkelen
 //   14 leeg of niet-weten-antwoord
 
+import { readFileSync } from "node:fs";
 import {
   zetClaudeStub,
   stubAntwoord,
@@ -562,6 +563,31 @@ async function run(): Promise<void> {
     check(
       "19f gewone klantmail wordt NIET als kopie gezien",
       !isVerzondenKopie(klant as never, "sent-archief@vignettehub.com"),
+    );
+  }
+
+  // -- 20. Escalatie mag nooit stil verdwijnen (25-07) ---------------------
+  // Op 25-07 weigerde ZeptoMail met een daglimiet en verdween een escalatie
+  // stil: de bot dacht dat Sabur gewaarschuwd was. De noodroute (SMTP vanaf de
+  // VM) moet dat opvangen; hier bewaken we dat de route bestaat en dat een
+  // mislukte app-verzending niet als succes wordt geboekt.
+  {
+    const bron = readFileSync(new URL("../src/acties.ts", import.meta.url), "utf8");
+    check(
+      "20a escalatie valt terug op de noodroute als de app faalt",
+      bron.includes("stuurNoodEscalatie") && /res\.ok && res\.uitgevoerd/.test(bron),
+      "acties.ts mist de terugval",
+    );
+    const nood = readFileSync(new URL("../src/noodmail.ts", import.meta.url), "utf8");
+    check(
+      "20b noodroute is alleen voor interne post, niet voor klantmail",
+      nood.includes("config.escalatieEmail") && !/opdracht\.naar|AntwoordOpdracht/.test(nood),
+      "noodroute mag nooit klantmail sturen",
+    );
+    check(
+      "20c noodroute gooit niet maar geeft false terug",
+      /catch \(err\)[\s\S]*return false/.test(nood),
+      "een mislukte noodroute mag de lus niet omleggen",
     );
   }
 

@@ -25,6 +25,7 @@
 import { config } from "./config.js";
 import { log } from "./log.js";
 import { stuurActie } from "./api.js";
+import { stuurNoodEscalatie } from "./noodmail.js";
 import { magRefunden, magVersturen } from "./guards.js";
 import type {
   ActieOpdracht,
@@ -202,7 +203,24 @@ async function escalatie(opdracht: EscalatieOpdracht): Promise<ActieResultaat> {
   if (!opdracht.reden) {
     return nietUitgevoerd("escalatie_sturen", "onvolledige_opdracht");
   }
-  return await postVerzendActie("escalatie_sturen", opdracht);
+  const res = await postVerzendActie("escalatie_sturen", opdracht);
+  if (res.ok && res.uitgevoerd) return res;
+
+  // De app kon de melding niet versturen (op 25-07: ZeptoMail-daglimiet). Een
+  // escalatie mag NOOIT stil verdwijnen, dus de bot stuurt hem dan zelf via
+  // SMTP vanaf de VM. Lukt dat, dan telt de escalatie als geslaagd.
+  log.warn(`Escalatie via de app mislukte (${res.fout ?? "onbekend"}), noodroute via SMTP proberen`);
+  const nood = await stuurNoodEscalatie(opdracht);
+  if (nood) {
+    return {
+      ok: true,
+      actie: "escalatie_sturen",
+      uitgevoerd: true,
+      definitief: true,
+      melding: "via noodroute (SMTP) verstuurd",
+    };
+  }
+  return res;
 }
 
 // ---------------------------------------------------------------------------
