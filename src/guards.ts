@@ -130,6 +130,71 @@ export function lusBeveiliging(mail: InkomendeMail): LusBeveiligingUitkomst {
 }
 
 // ---------------------------------------------------------------------------
+// Bekende machinemeldingen: archiveren zonder model (26-07-2026)
+// ---------------------------------------------------------------------------
+//
+// AANLEIDING: van de laatste 85 verwerkte mails waren er 56 van service@paypal.nl
+// met de melding dat er een betaling binnen is. Elk van die mails kostte een
+// classificatie van 3 tot 8 dollarcent en werd daarna toch als spam_overig
+// gearchiveerd. Dat is puur weggegooid geld.
+//
+// WAAROM DIT VOORZICHTIG MOET (huisregel: nooit een actie met gevolgen op enkel
+// een tekstmatch): tussen de PayPal-post zitten OOK de mails die juist wel naar
+// Sabur moeten, zoals "De koper heeft een kwestie ingediend". Die filteren zou
+// betekenen dat een geschil ongemerkt blijft liggen. Daarom drie sloten:
+//   1. Het afzenderDOMEIN moet in de lijst staan (paypal.nl of paypal.com).
+//   2. Het ONDERWERP moet exact op een bekend meldingspatroon passen; iets nieuws
+//      van PayPal gaat dus gewoon langs het model.
+//   3. Een vetolijst met woorden uit het geld- en geschilpad (kwestie, dispute,
+//      chargeback, beperking, actie vereist) zet de filter altijd buitenspel.
+// Bovendien blijft de mail gewoon in de log staan met de reden erbij, dus in de
+// admin is te zien wat er is overgeslagen.
+
+const MACHINE_MELDINGEN: ReadonlyArray<{ domein: string; onderwerp: RegExp; naam: string }> = [
+  {
+    domein: "paypal.nl",
+    onderwerp: /^(kennisgeving:\s*)?betaling ontvangen\b/i,
+    naam: "PayPal-betaalmelding, geen antwoord nodig",
+  },
+  {
+    domein: "paypal.com",
+    onderwerp:
+      /^(you.{0,3}ve received a payment|notification of payment received|(kennisgeving:\s*)?betaling ontvangen|zahlungseingang|sie haben eine zahlung erhalten)\b/i,
+    naam: "PayPal-betaalmelding, geen antwoord nodig",
+  },
+  {
+    domein: "paypal.de",
+    onderwerp: /^(zahlungseingang|sie haben eine zahlung erhalten)\b/i,
+    naam: "PayPal-betaalmelding, geen antwoord nodig",
+  },
+];
+
+// Zodra een van deze woorden in het onderwerp staat, filteren we NOOIT. Bewust
+// ruim: een onterecht doorgelaten mail kost een paar cent, een onterecht
+// gefilterde mail kan een geschil of een blokkade zijn die niemand ziet.
+const NOOIT_FILTEREN =
+  /(kwestie|geschil|klacht|dispute|claim|case|chargeback|terugbetaal|terugbetaling|refund|storno|r[uü]ckbuchung|streitfall|beschwerde|beperk|limit|hold|vastgehouden|actie vereist|action required|handlung erforderlich|dringend|urgent|verifi|verify|best[aä]tig|wachtwoord|password)/i;
+
+/**
+ * Naam van de machinemelding als deze mail zonder model afgehandeld mag worden,
+ * anders null. Puur leesbaar en zonder bijwerkingen, zodat de test hem los kan
+ * controleren.
+ */
+export function machinemeldingReden(mail: InkomendeMail): string | null {
+  const onderwerp = (mail.onderwerp ?? "").trim();
+  if (!onderwerp) return null;
+  if (NOOIT_FILTEREN.test(onderwerp)) return null;
+  const domein = (mail.vanAdres ?? "").split("@")[1]?.toLowerCase() ?? "";
+  if (!domein) return null;
+  for (const m of MACHINE_MELDINGEN) {
+    const zelfdeDomein = domein === m.domein || domein.endsWith(`.${m.domein}`);
+    if (!zelfdeDomein) continue;
+    if (m.onderwerp.test(onderwerp)) return m.naam;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Caps: staat op schijf
 // ---------------------------------------------------------------------------
 

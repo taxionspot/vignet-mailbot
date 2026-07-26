@@ -499,6 +499,12 @@ export interface MailBotLogRegel {
   escalatie: boolean;
   escalatieReden?: EscalatieReden;
   kostenUsd?: number;
+  /**
+   * Een regel context voor de admin. Komt normaal uit de classificatie; bij een
+   * bekende machinemelding zetten we hier de reden waarom er geen model aan te
+   * pas is gekomen (zie machinemeldingReden in guards.ts).
+   */
+  samenvatting?: string;
   /** Vrije melding bij de logregel, bijvoorbeeld het PayPal-refundnummer. */
   melding?: string;
   fout?: string;

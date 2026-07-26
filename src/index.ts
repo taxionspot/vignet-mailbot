@@ -18,6 +18,7 @@ import { ApiFout } from "./api.js";
 import { schrijfLog } from "./api.js";
 import {
   lusBeveiliging,
+  machinemeldingReden,
   magVerwerken,
   magVersturen,
   magRefunden,
@@ -373,6 +374,20 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
     regel.fout = lus.reden ?? undefined;
     await schrijfLog(regel);
     log.info(`Geblokkeerd (${lus.reden}), gearchiveerd: ${mail.vanAdres}`);
+    return { bestemming: config.mappen.afgehandeld, actie: "geen" };
+  }
+
+  // ---- 1b. Bekende machinemelding: archiveren zonder model ----
+  // Alleen voor exact bekende afzender-plus-onderwerp-combinaties, met een
+  // vetolijst voor alles wat geld of een geschil raakt. Zie guards.ts.
+  const machine = machinemeldingReden(mail);
+  if (machine) {
+    const regel = basisLog(mail, null, null);
+    regel.actie = "geen";
+    regel.bestemming = config.mappen.afgehandeld;
+    regel.samenvatting = machine;
+    await schrijfLog(regel);
+    log.info(`Machinemelding (${machine}), gearchiveerd zonder model: ${mail.vanAdres}`);
     return { bestemming: config.mappen.afgehandeld, actie: "geen" };
   }
 
