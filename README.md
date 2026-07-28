@@ -115,7 +115,8 @@ anders kan. Vier knoppen bepalen dat gedrag.
 |---|---|---|
 | `VERTROUWEN_DREMPEL` | `0.75` | Drempel voor geld en recht: annuleren, betaling, factuur, klacht, kenteken. Blijft streng. |
 | `VERTROUWEN_DREMPEL_INFO` | `0.45` | Drempel voor informatie: status, uitleg, bewijs kwijt. Daar wordt niets onomkeerbaars gedaan. |
-| `MAILBOT_ZELF_DOORVRAGEN` | `1` | Vindt de bot de bestelling niet, dan vraagt hij zelf om ordernummer of kenteken. Een keer per gesprek; daarna gaat de mail alsnog naar Sabur. |
+| `MAILBOT_ZELF_DOORVRAGEN` | `1` | Vindt de bot de bestelling niet, dan vraagt hij zelf om een ander e-mailadres, het ordernummer of het kenteken. Op 0 gaat de mail meteen naar Sabur (gedrag van voor 24-07). |
+| `CAP_ORDER_VRAGEN` | `2` | Hoe vaak de bot per gesprek zelf mag doorvragen voordat hij alsnog escaleert. Telt per thread en per afzenderadres. 1 = het gedrag van voor 28-07 (na een mislukte poging meteen naar Sabur). |
 | `MAILBOT_ONTVANGSTBEVESTIGING` | `1` | Escaleert de bot toch, dan krijgt de klant een korte bevestiging in zijn eigen taal, zodat het niet stil blijft. |
 | `MAILBOT_EIS_AUTHENTICATIE` | `1` | Naar een afzender zonder gekoppelde bestelling mailt de bot alleen als DMARC of DKIM bewijst dat het adres echt is. Anders kan iemand met een vervalst adres onze bot post laten sturen naar een derde. |
 

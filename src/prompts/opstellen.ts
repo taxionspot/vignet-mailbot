@@ -106,11 +106,13 @@ function modusInstructie(modus: Opstelmodus, merk: string): string[] {
       "",
       "SITUATIE: DE BESTELLING IS NIET GEVONDEN",
       "Deze klant schrijft over zijn bestelling, maar wij kunnen die niet terugvinden bij dit e-mailadres. Jouw taak is nu NIET om de vraag inhoudelijk te beantwoorden, maar om het gesprek vlot te trekken.",
-      "Schrijf kort en vriendelijk: je hebt zijn bericht, je kunt de bestelling nog niet vinden bij dit e-mailadres, en je hebt het ordernummer nodig (dat begint met VH, gevolgd door vijf tekens) of het kenteken waarop het vignet is aangevraagd.",
-      "Noem als hulp dat het ordernummer in de bevestigingsmail staat, en dat het kan helpen om te mailen vanaf het adres waarmee de bestelling is geplaatst.",
-      "Geef geen status, geen bedrag, geen datum en geen enkele bestelgegeven: je hebt ze niet. Beloof ook geen uitkomst.",
+      "Zeg kort en vriendelijk dat je zijn bericht hebt, maar geen bestelling op dit e-mailadres ziet staan. Vraag hem daarna om EEN van deze drie dingen, in gewone taal en in deze volgorde:",
+      "1. Of hij de bestelling misschien met een ANDER e-mailadres heeft geplaatst. Zo ja, vraag welk adres dat is en nodig hem uit om ons vanaf dat adres te mailen, want dan vinden we de bestelling meteen terug.",
+      "2. Zijn ordernummer, dat met VH begint gevolgd door vijf tekens en in de bevestigingsmail staat.",
+      "3. Anders het kenteken waarop het vignet is aangevraagd.",
+      "Geef geen status, geen bedrag, geen datum en geen enkel bestelgegeven: je hebt ze niet. Beloof ook geen uitkomst.",
       "Blijf helpen waar het kan: is er in de mail ook een algemene vraag die je uit de kennisbank kunt beantwoorden, beantwoord die dan meteen in dezelfde mail.",
-      `Schrijf NOOIT de zin "${NIET_WETEN_SENTINEL}" in deze situatie. Om het ordernummer vragen IS hier het goede antwoord.`,
+      `Schrijf NOOIT de zin "${NIET_WETEN_SENTINEL}" in deze situatie. Om deze gegevens vragen IS hier het goede antwoord.`,
     ];
   }
   return [];

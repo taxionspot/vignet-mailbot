@@ -26,7 +26,7 @@ import {
   registreerAntwoord,
   magRefunderen,
   registreerRefund,
-  orderVraagGesteld,
+  orderVraagAantal,
   registreerOrderVraag,
   type CapUitkomst,
 } from "./guards.js";
@@ -731,10 +731,17 @@ async function verwerkOrderOnbekend(
   intent: Intent,
   match: MatchResultaat
 ): Promise<VerwerkUitkomst> {
-  const alGevraagd = orderVraagGesteld(mail);
+  const aantalGevraagd = orderVraagAantal(mail);
   const genoemdNummer = match.genoemdVhNummer;
+  // Sinds 28-07 escaleert een mislukte poging niet meteen: de bot mag de klant
+  // tot config.caps.maxOrderVragen keer om een ordernummer, kenteken of het
+  // besteladres vragen. Een genoemd VH-nummer dat niet bestaat blokkeert het
+  // doorvragen niet meer: juist dan helpt de bredere vraag (klopt het nummer,
+  // of is er met een ander e-mailadres besteld) vaak alsnog.
   const magVragen =
-    config.schakelaars.zelfDoorvragen && !alGevraagd && !genoemdNummer && magKlantMailen(mail, false);
+    config.schakelaars.zelfDoorvragen &&
+    aantalGevraagd < config.caps.maxOrderVragen &&
+    magKlantMailen(mail, false);
 
   // ANNULEREN is een apart geval, en het gevaarlijkste. Twee redenen:
   //   1. Tijdkritisch. Levering duurt normaal een kwartier en Roemenie kopen we
@@ -751,10 +758,12 @@ async function verwerkOrderOnbekend(
 
   if (!magVragen) {
     const toelichting = genoemdNummer
-      ? `De klant noemt ordernummer ${genoemdNummer}, maar die bestelling bestaat niet in de database. Handmatig beoordelen.`
-      : alGevraagd
-        ? "In dit gesprek al een keer om het ordernummer of kenteken gevraagd en nog steeds geen match. Handmatig beoordelen."
-        : `Geen order gevonden op VH-nummer, e-mailadres of kenteken, en zelf doorvragen staat uit. Intent ${intent}.`;
+      ? `De klant noemt ordernummer ${genoemdNummer}, maar die bestelling bestaat niet in de database, en na ${aantalGevraagd}x doorvragen is er nog geen match. Handmatig beoordelen.`
+      : aantalGevraagd > 0
+        ? `In dit gesprek al ${aantalGevraagd}x om het ordernummer, kenteken of besteladres gevraagd en nog steeds geen match. Handmatig beoordelen.`
+        : !config.schakelaars.zelfDoorvragen
+          ? `Geen order gevonden op VH-nummer, e-mailadres of kenteken, en zelf doorvragen staat uit. Intent ${intent}.`
+          : `Geen order gevonden op VH-nummer, e-mailadres of kenteken, en de bot mocht deze afzender niet zelf mailen (bijvoorbeeld geen DMARC- of DKIM-pass). Intent ${intent}.`;
     const esc = bouwEscalatie(mail, {
       reden: "geen_order",
       toelichting,

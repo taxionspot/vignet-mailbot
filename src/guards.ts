@@ -431,10 +431,13 @@ export function registreerAntwoord(mail: InkomendeMail): void {
 }
 
 /**
- * Heeft de bot in deze thread al eens om een ordernummer of kenteken gevraagd?
- * Zo ja, dan heeft nog eens vragen geen zin en gaat de mail naar Sabur.
+ * Hoe vaak de bot in deze thread (of naar dit afzenderadres) al om een
+ * ordernummer, kenteken of besteladres heeft gevraagd. De lus escaleert pas
+ * zodra dit de grens config.caps.maxOrderVragen raakt, zodat de klant een echte
+ * tweede kans krijgt in plaats van na een mislukte poging meteen bij Sabur te
+ * landen.
  */
-export function orderVraagGesteld(mail: InkomendeMail): boolean {
+export function orderVraagAantal(mail: InkomendeMail): number {
   const s = laadState();
   rolloverEnOpruimen(s);
   // Op twee sleutels tellen. De threadsleutel alleen is niet genoeg: die komt
@@ -443,7 +446,16 @@ export function orderVraagGesteld(mail: InkomendeMail): boolean {
   // keer opnieuw om zijn ordernummer vragen. Het afzenderadres ligt wel vast.
   const perThread = s.orderVraagPerThread[mail.threadSleutel]?.aantal ?? 0;
   const perAfzender = s.orderVraagPerThread[afzenderSleutel(mail)]?.aantal ?? 0;
-  return perThread > 0 || perAfzender > 0;
+  return Math.max(perThread, perAfzender);
+}
+
+/**
+ * Heeft de bot in deze thread al eens om een ordernummer of kenteken gevraagd?
+ * Dunne wrapper op orderVraagAantal, voor plekken die alleen ja of nee nodig
+ * hebben.
+ */
+export function orderVraagGesteld(mail: InkomendeMail): boolean {
+  return orderVraagAantal(mail) > 0;
 }
 
 /** Tweede sleutel voor de ordervraag: het afzenderadres, met een eigen prefix. */

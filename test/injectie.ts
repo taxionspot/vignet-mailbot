@@ -392,6 +392,19 @@ async function run(): Promise<void> {
     );
   }
   {
+    // De doorvraag bij een onbekende bestelling noemt sinds 28-07 uitdrukkelijk
+    // het alternatieve e-mailadres als eerste optie (besluit Sabur): veel
+    // klanten mailen vanaf een ander adres dan waarmee ze besteld hebben.
+    const prompt = opstellenSysteem("status_vraag", "nl", null, "order_onbekend");
+    check(
+      "16h order_onbekend vraagt om een ander e-mailadres, plus ordernummer en kenteken",
+      prompt.includes("ANDER e-mailadres") &&
+        prompt.includes("ordernummer") &&
+        prompt.includes("kenteken"),
+      prompt,
+    );
+  }
+  {
     // De harde poort blijft staan: zonder bestelling is er geen enkel bedrag
     // toegestaan, dus een antwoord met een bedrag wordt afgekeurd.
     const geenOrder = bouwFeitenBlok(null);

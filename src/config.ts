@@ -131,6 +131,12 @@ const CAP_REFUNDS_PER_DAG = geheelGetal("CAP_REFUNDS_PER_DAG", 10, 1, 10000);
 // In euro's ingesteld, intern in centen bewaard.
 const CAP_REFUND_EUR_PER_DAG = geheelGetal("CAP_REFUND_EUR_PER_DAG", 500, 1, 1000000);
 
+// Hoe vaak de bot in dezelfde thread zelf om een ordernummer, kenteken of
+// besteladres mag vragen voordat de mail naar Sabur gaat. Besluit Sabur 28-07:
+// niet meer meteen escaleren na een mislukte poging, de klant een echte tweede
+// kans geven. 1 = het oude gedrag van voor 28-07.
+const CAP_ORDER_VRAGEN = geheelGetal("CAP_ORDER_VRAGEN", 2, 1, 5);
+
 // Vertrouwensdrempels voor de classificatie. Sinds 24-07 gesplitst (besluit
 // Sabur): het geldpad en het juridische pad blijven streng op 0,75, terwijl een
 // informatieve vraag (status, uitleg, bewijs kwijt) al vanaf 0,45 zelfstandig
@@ -254,6 +260,7 @@ export const config = {
     antwoordenPerDag: CAP_ANTWOORDEN_PER_DAG,
     refundsPerDag: CAP_REFUNDS_PER_DAG,
     refundCentenPerDag: CAP_REFUND_EUR_PER_DAG * 100,
+    maxOrderVragen: CAP_ORDER_VRAGEN,
   },
   vertrouwenDrempel: VERTROUWEN_DREMPEL,
   vertrouwenDrempelInfo: VERTROUWEN_DREMPEL_INFO,
