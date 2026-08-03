@@ -175,8 +175,24 @@ export interface InkomendeMail {
   ontvangenAt: Date;
   headers: MailHeaders;
   bijlageNamen: string[];
+  /**
+   * Meegezonden afbeeldingen (foto's, screenshots), klaar voor het model.
+   * parse.ts vult dit met maximaal een paar ondersteunde beeldbestanden;
+   * al het andere (pdf's, te grote bestanden) blijft alleen in bijlageNamen
+   * staan. Zo kan de bot een foto van een bankafschrift of een
+   * portaalbevestiging echt LEZEN in plaats van alleen de bestandsnaam zien.
+   */
+  bijlagen: MailAfbeelding[];
   /** True als de mail eruitziet als een bounce of DSN (alleen loggen). */
   isBounce: boolean;
+}
+
+/** Een afbeelding uit de mail, base64-gecodeerd voor de Messages API. */
+export interface MailAfbeelding {
+  bestandsnaam: string;
+  /** image/jpeg, image/png, image/gif of image/webp. */
+  mediaType: string;
+  base64: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -70,6 +70,11 @@ export interface ClaudeVerzoek {
   model: ClaudeModel;
   systeem: string;
   gebruiker: string;
+  /**
+   * Afbeeldingen uit de klantmail (foto's, screenshots). Gaan als image-blokken
+   * VOOR de tekst mee in het user-bericht, zodat het model ze echt ziet.
+   */
+  afbeeldingen?: Array<{ mediaType: string; base64: string }>;
   maxTokens: number;
   /** Aanwezig = het model MOET deze tool aanroepen (tool_choice op de eigen tool). */
   tool?: ClaudeTool;
@@ -238,11 +243,25 @@ function bouwPayload(v: ClaudeVerzoek): Record<string, unknown> {
     ? [{ type: "text", text: v.systeem, cache_control: { type: "ephemeral" } }]
     : v.systeem;
 
+  // Zonder afbeeldingen blijft het user-bericht een kale string (identiek aan
+  // voorheen, dus ook dezelfde prompt-cache). Met afbeeldingen wordt het een
+  // blokkenlijst: eerst de foto's, dan de tekst die ernaar kan verwijzen.
+  const inhoud: unknown =
+    v.afbeeldingen && v.afbeeldingen.length > 0
+      ? [
+          ...v.afbeeldingen.map((b) => ({
+            type: "image",
+            source: { type: "base64", media_type: b.mediaType, data: b.base64 },
+          })),
+          { type: "text", text: v.gebruiker },
+        ]
+      : v.gebruiker;
+
   const payload: Record<string, unknown> = {
     model: v.model,
     max_tokens: v.maxTokens,
     system,
-    messages: [{ role: "user", content: v.gebruiker }],
+    messages: [{ role: "user", content: inhoud }],
   };
   if (v.tool) {
     payload.tools = [v.tool];

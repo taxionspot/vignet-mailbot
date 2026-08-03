@@ -114,7 +114,8 @@ export function verwerkClassificatieAntwoord(
 /** Kernfunctie: classificeer een mail in het compacte MailVoorClassificatie-formaat. */
 export async function classificeerKern(
   mail: MailVoorClassificatie,
-  drempels: Drempels = STANDAARD_DREMPELS
+  drempels: Drempels = STANDAARD_DREMPELS,
+  afbeeldingen?: Array<{ mediaType: string; base64: string }>
 ): Promise<ClassificatieKern> {
   let antwoord: ClaudeAntwoord;
   try {
@@ -122,6 +123,9 @@ export async function classificeerKern(
       model: kiesModel("MAILBOT_MODEL_CLASSIFICATIE", MODEL_CLASSIFICATIE),
       systeem: CLASSIFICATIE_SYSTEEM,
       gebruiker: classificatieGebruikerBlok(mail),
+      // Meegezonden foto's/screenshots tellen mee bij het sorteren: een foto
+      // van een bankafschrift maakt van een vage mail een betaling_probleem.
+      afbeeldingen,
       maxTokens: 400,
       tool: CLASSIFICATIE_TOOL,
       // Sorteren is een simpele taak: geen thinking/effort nodig. Op Opus 4.8 en
@@ -177,7 +181,7 @@ export function mailNaarClassificatieInvoer(mail: InkomendeMail): MailVoorClassi
  * via classificeerKern.
  */
 export async function classificeer(mail: InkomendeMail, drempels?: Drempels): Promise<Classificatie> {
-  const kern = await classificeerKern(mailNaarClassificatieInvoer(mail), drempels);
+  const kern = await classificeerKern(mailNaarClassificatieInvoer(mail), drempels, mail.bijlagen);
   return {
     intent: kern.intent,
     taal: kern.taal,

@@ -124,7 +124,11 @@ const POLL_SECONDEN = geheelGetal("POLL_SECONDEN", 30, 5, 3600);
 const AFZENDER_NAAM = optioneel("AFZENDER_NAAM", "Nina");
 
 // Caps uit spec sectie 9.
-const CAP_ANTWOORDEN_PER_THREAD = geheelGetal("CAP_ANTWOORDEN_PER_THREAD", 3, 1, 100);
+// Van 3 naar 6 op 03-08 (besluit Sabur): drie antwoorden per gesprek bleek te
+// krap voor een echt heen-en-weer met een klant (zie VH-NCB77). De cap blijft
+// bestaan als rem op mail-loops met autoresponders; 6 echte antwoorden in een
+// gesprek is ruim, een loop knalt er nog steeds tegenaan.
+const CAP_ANTWOORDEN_PER_THREAD = geheelGetal("CAP_ANTWOORDEN_PER_THREAD", 6, 1, 100);
 const CAP_MAILS_PER_AFZENDER_24U = geheelGetal("CAP_MAILS_PER_AFZENDER_24U", 10, 1, 1000);
 const CAP_ANTWOORDEN_PER_DAG = geheelGetal("CAP_ANTWOORDEN_PER_DAG", 100, 1, 100000);
 const CAP_REFUNDS_PER_DAG = geheelGetal("CAP_REFUNDS_PER_DAG", 10, 1, 10000);
@@ -177,6 +181,10 @@ const STATE_MAP = optioneel("STATE_MAP", "data");
 // dus die krijgt een eigen, ruimere time-out.
 const HTTP_TIMEOUT_MS = geheelGetal("HTTP_TIMEOUT_MS", 15000, 1000, 120000);
 const HTTP_TIMEOUT_REFUND_MS = geheelGetal("HTTP_TIMEOUT_REFUND_MS", 60000, 5000, 300000);
+// Wachttijd voor de nacontrole na een refund met ONBEKENDE uitkomst: de app
+// kan de refund alsnog afgerond hebben terwijl alleen het antwoord verloren
+// ging (time-out). Na deze pauze vraagt de bot de orderstatus opnieuw op.
+const REFUND_NACONTROLE_MS = geheelGetal("REFUND_NACONTROLE_MS", 20000, 1000, 120000);
 
 // Modelnamen. Vast in de spec, maar overschrijfbaar zonder codewijziging.
 const MODEL_CLASSIFY = optioneel("MODEL_CLASSIFY", "claude-haiku-4-5");
@@ -232,6 +240,7 @@ export const config = {
     botSecret: BOT_SECRET,
     httpTimeoutMs: HTTP_TIMEOUT_MS,
     httpTimeoutRefundMs: HTTP_TIMEOUT_REFUND_MS,
+    refundNacontroleMs: REFUND_NACONTROLE_MS,
   },
   anthropic: {
     apiKey: ANTHROPIC_API_KEY,

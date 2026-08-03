@@ -15,7 +15,7 @@ import { parseMail, isVerzondenKopie } from "./parse.js";
 import { Postbus } from "./imap.js";
 import { geenMatch, matchOrder, type MatchResultaat } from "./match.js";
 import { ApiFout } from "./api.js";
-import { schrijfLog } from "./api.js";
+import { haalOrder, schrijfLog } from "./api.js";
 import {
   lusBeveiliging,
   machinemeldingReden,
@@ -52,6 +52,7 @@ import { drempelVoor, isTaal, type BotIntent, type BotTaal, type Drempels } from
 import { merkNaam } from "./prompts/opstellen.js";
 import {
   ANNULEER_ORDERVRAAG_TEKST,
+  GEEN_AFSCHRIJVING_TEKST,
   ONTVANGST_ONDERWERP,
   ONTVANGST_TEKST,
   kiesTekst,
@@ -460,6 +461,17 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
 
   // ---- 4a. Escalatie-only intents (factuur, betaling, klacht, mens_nodig) ----
   if (isEscalatieIntent) {
+    // Uitzondering (besluit Sabur 03-08): een afschrijvingsklacht terwijl er op
+    // dit adres GEEN bestelling bestaat en de klant ook geen VH-nummer noemt,
+    // is in de praktijk vrijwel altijd een afschrijving van een ANDER bedrijf
+    // (wij hebben geen abonnementen en schrijven per bestelling een keer af).
+    // Die legt de bot zelf uit met een vaste tekst, zonder escalatie. Lukt dat
+    // niet veilig (adres niet geauthenticeerd, cap dicht, versturen mislukt),
+    // dan valt hij gewoon terug op de escalatie hieronder.
+    if (intent === "betaling_probleem" && order === null && !match.genoemdVhNummer) {
+      const uitkomst = await verwerkAfschrijvingZonderOrder(mail, classificatie);
+      if (uitkomst) return uitkomst;
+    }
     return await escaleerIntent(mail, classificatie, intent, order, match);
   }
 
@@ -868,6 +880,51 @@ async function verwerkAnnuleerZonderOrder(
   return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
 }
 
+// Afschrijvingsklacht (betaling_probleem) zonder bestelling en zonder genoemd
+// VH-nummer: de klant ziet een afschrijving die niet van ons kan zijn (geen
+// order, geen abonnementen). De bot legt dat zelf uit met een vaste tekst en
+// archiveert; geen escalatie. Geeft null terug als het niet veilig kan, dan
+// escaleert de aanroeper zoals vanouds. Besluit Sabur 03-08.
+async function verwerkAfschrijvingZonderOrder(
+  mail: InkomendeMail,
+  classificatie: Classificatie
+): Promise<VerwerkUitkomst | null> {
+  // Zonder DMARC/DKIM-bewijs geen autonoom antwoord naar dit adres, en met de
+  // verzendschakelaar uit of een dichte cap ook niet. Dan beslist een mens.
+  if (!magVersturen() || !magKlantMailen(mail, false)) return null;
+  const cap = magAntwoorden(mail, { stil: true });
+  if (cap.geblokkeerd) return null;
+
+  const regel = basisLog(mail, classificatie, null);
+  const taal = taalVan(classificatie);
+  const concept: Concept = {
+    onderwerp: reOnderwerpVan(mail, taal),
+    tekst: metOndertekening(
+      kiesTekst(GEEN_AFSCHRIJVING_TEKST, taal),
+      config.afzenderNaam,
+      merkNaam(),
+      taal
+    ),
+    taal: naarLocale(taal),
+  };
+  const res = await voerActieUit(bouwAntwoordOpdracht(mail, concept));
+  if (!res.ok || !res.uitgevoerd) {
+    log.warn(`Geen-afschrijving-uitleg niet verstuurd (${res.fout ?? "onbekend"}), val terug op escalatie`);
+    return null;
+  }
+
+  registreerAntwoord(mail);
+  regel.actie = "antwoord_sturen";
+  regel.escalatie = false;
+  regel.antwoordTekst = concept.tekst;
+  regel.verstuurdAt = new Date().toISOString();
+  regel.bestemming = config.mappen.afgehandeld;
+  regel.melding = "afschrijvingsklacht zonder order: vaste geen-abonnementen-uitleg gestuurd";
+  await schrijfLog(regel);
+  log.info(`Afschrijvingsklacht zonder order zelf beantwoord: ${mail.vanAdres}`);
+  return { bestemming: config.mappen.afgehandeld, actie: "antwoord_sturen" };
+}
+
 // kenteken_fout: voor inkoop uitleg plus link naar zelf corrigeren; na inkoop
 // niets, escaleren met het foutNaInkoop-runbook (spec sectie 5).
 async function verwerkKentekenFout(
@@ -1051,12 +1108,39 @@ async function voerRefundUit(
     afzender: mail.vanAdres,
   });
 
-  // Onbekende uitkomst (time-out of 5xx): NOOIT opnieuw proberen bij een
-  // geldactie. Escaleren zodat Sabur PayPal en de order controleert.
+  // Onbekende uitkomst (time-out of 5xx): NOOIT blind opnieuw proberen bij een
+  // geldactie. WEL eerst nakijken (03-08, zie VH-ZYZJU): heel vaak is de refund
+  // aan de app-kant gewoon gelukt en ging alleen het HTTP-antwoord verloren.
+  // Even wachten en de orderstatus opnieuw opvragen is alleen-lezen en dus
+  // veilig; staat de order dan op REFUNDED, dan is het geld aantoonbaar terug
+  // en heeft de app de klant zijn annuleringsmail al gestuurd. Alleen als ook
+  // de nacontrole geen zekerheid geeft, escaleren we zoals vanouds.
   if (!res.definitief) {
+    const bevestigd = await refundNacontrole(order.orderToken, teRefundenCents);
+    if (bevestigd) {
+      registreerRefund(teRefundenCents);
+      const euro = (teRefundenCents / 100).toFixed(2);
+      const melding = bouwEscalatie(mail, {
+        reden: "refund_uitgevoerd",
+        toelichting: `${order.orderToken} GEANNULEERD EN TERUGBETAALD (${euro} EUR). De eerste aanroep gaf een time-out, maar de nacontrole bevestigt: de order staat op REFUNDED. NIET INKOPEN. De klant heeft de annuleringsmail van de app ontvangen.`,
+        spoed: true,
+        intent: classificatie.intent,
+        vertrouwen: classificatie.vertrouwen,
+        orderToken: order.orderToken,
+      });
+      await voerActieUit(melding);
+      regel.actie = "annuleer_refund";
+      regel.escalatie = false;
+      regel.verstuurdAt = new Date().toISOString();
+      regel.bestemming = config.mappen.afgehandeld;
+      regel.melding = `refund na nacontrole bevestigd (${euro} EUR)`;
+      await schrijfLog(regel);
+      log.info(`Refund ${order.orderToken} na nacontrole bevestigd (${euro} EUR)`);
+      return { bestemming: config.mappen.afgehandeld, actie: "annuleer_refund" };
+    }
     const esc = bouwEscalatie(mail, {
       reden: "actie_onbekend",
-      toelichting: `Refund op ${order.orderToken} gaf een ONBEKENDE uitkomst (${res.fout ?? "time-out/5xx"}). NIET automatisch opnieuw gedaan. Controleer PayPal en de orderstatus handmatig.`,
+      toelichting: `Refund op ${order.orderToken} gaf een ONBEKENDE uitkomst (${res.fout ?? "time-out/5xx"}). NIET automatisch opnieuw gedaan. De nacontrole van de orderstatus gaf OOK geen bevestiging (order staat niet op REFUNDED). Controleer PayPal en de orderstatus handmatig.`,
       spoed: true,
       intent: classificatie.intent,
       vertrouwen: classificatie.vertrouwen,
@@ -1136,6 +1220,27 @@ async function voerRefundUit(
 // ---------------------------------------------------------------------------
 // Gedeelde helpers voor de deelroutes
 // ---------------------------------------------------------------------------
+
+/**
+ * Nacontrole na een refund met onbekende uitkomst: even wachten (de app kan de
+ * flow nog aan het afronden zijn) en dan de orderstatus opnieuw opvragen.
+ * ALLEEN-LEZEN, er wordt niets opnieuw uitgevoerd. True alleen als de order nu
+ * aantoonbaar op REFUNDED staat of het volledige bedrag als terugbetaald
+ * geregistreerd is; elke twijfel (fout, time-out, andere status) is false en
+ * leidt bij de aanroeper tot de gewone escalatie.
+ */
+async function refundNacontrole(orderToken: string, verwachtCents: number): Promise<boolean> {
+  await new Promise((klaar) => setTimeout(klaar, config.app.refundNacontroleMs));
+  try {
+    const antwoord = await haalOrder({ soort: "token", token: orderToken });
+    if (!antwoord.ok || !antwoord.order) return false;
+    const o = antwoord.order;
+    return o.fulfilmentStatus === "REFUNDED" || o.alTerugbetaaldCents >= verwachtCents;
+  } catch (err) {
+    log.warn(`Refund-nacontrole op ${orderToken} mislukt, escaleren`, err);
+    return false;
+  }
+}
 
 // Concept opstellen, controleren en versturen naar de klant, met alle
 // uitkomsten netjes gelogd. Gebruikt door status/product/kenteken/annuleren-na-inkoop.

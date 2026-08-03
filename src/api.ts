@@ -225,6 +225,55 @@ export async function stuurActie(opdracht: ActieOpdracht): Promise<ActieResultaa
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/bot/leervoorbeelden
+// ---------------------------------------------------------------------------
+
+/** Een correctie die Sabur op het escalatie-dashboard maakte (few-shot-voer). */
+export interface Leervoorbeeld {
+  intent: string | null;
+  reden: string | null;
+  taal: string | null;
+  klantVraag: string | null;
+  botConcept: string | null;
+  operatorAntwoordNl: string | null;
+  verzondenTekst: string | null;
+}
+
+// Kleine in-memory cache per intent: de voorbeelden veranderen hooguit een paar
+// keer per dag, en zonder cache zou elke opstel-aanroep een extra rondgang naar
+// de app maken.
+const LEERVOORBEELD_CACHE_MS = 10 * 60 * 1000;
+const leervoorbeeldCache = new Map<string, { op: number; lijst: Leervoorbeeld[] }>();
+
+/**
+ * Haalt de recentste door een mens goedgekeurde antwoorden op voor deze intent.
+ * Best effort en nooit gooien: leren is een hulpmiddel, geen blokker. Bij elke
+ * fout (netwerk, 4xx, rare JSON) komt gewoon een lege lijst terug.
+ */
+export async function haalLeervoorbeelden(intent: string, limit = 4): Promise<Leervoorbeeld[]> {
+  const sleutel = `${intent}|${limit}`;
+  const nu = Date.now();
+  const cached = leervoorbeeldCache.get(sleutel);
+  if (cached && nu - cached.op < LEERVOORBEELD_CACHE_MS) return cached.lijst;
+
+  try {
+    const params = new URLSearchParams({ intent, limit: String(limit) });
+    const { body } = await doeVerzoek<{ ok: boolean; voorbeelden?: Leervoorbeeld[] }>(
+      "GET",
+      `/api/bot/leervoorbeelden?${params.toString()}`,
+      { timeoutMs: config.app.httpTimeoutMs }
+    );
+    const lijst = body.ok && Array.isArray(body.voorbeelden) ? body.voorbeelden : [];
+    leervoorbeeldCache.set(sleutel, { op: nu, lijst });
+    return lijst;
+  } catch (err) {
+    log.warn(`Leervoorbeelden ophalen mislukt (${intent}), verder zonder`, err);
+    leervoorbeeldCache.set(sleutel, { op: nu, lijst: [] });
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/bot/log
 // ---------------------------------------------------------------------------
 

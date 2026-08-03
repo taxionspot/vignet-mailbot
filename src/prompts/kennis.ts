@@ -167,6 +167,7 @@ export const ALGEMENE_KENNIS: string[] = [
   "Voor Duitsland is geen vignet nodig: de snelwegen zijn daar voor personenauto's tolvrij. Italie en Kroatie werken met tolpoorten waar per traject betaald wordt, dus ook daar geen vignet.",
   "Levering duurt normaal ongeveer een kwartier nadat wij een order oppakken. Beloof nooit een exacte tijd, zeg dat het meestal snel klaar is en dat de klant de voortgang live op zijn eigen statuspagina ziet. Genoemde levertijden zijn een realistische indicatie, geen garantie.",
   "Wij helpen het snelst per e-mail. Op werkdagen reageren wij meestal binnen een paar uur en uiterlijk binnen een werkdag. Wij bellen nooit ongevraagd en vragen nooit per e-mail om volledige betaalgegevens.",
+  "Wij hebben GEEN abonnementen en geen automatische verlenging: elke bestelling is los en wij schrijven per bestelling precies een keer af, nooit maandelijks en nooit automatisch opnieuw. Klaagt een klant over een terugkerende of latere afschrijving en vinden wij geen bijbehorende bestelling, dan komt die afschrijving van een ander bedrijf; de naam van dat bedrijf staat op het bank- of kaartafschrift naast de afschrijving, en daar (of bij de eigen bank) moet de klant het melden.",
 ];
 
 // Prijzen en bedragen: de enige plek waar de bot over geld mag praten is de

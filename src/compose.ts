@@ -37,6 +37,7 @@ import {
   NIET_WETEN_SENTINEL,
   type Opstelmodus,
 } from "./prompts/opstellen.js";
+import { haalLeervoorbeelden, type Leervoorbeeld } from "./api.js";
 import { metOndertekening } from "./teksten.js";
 import { isIntent, type BotIntent, type BotTaal, isTaal } from "./prompts/classificatie.js";
 import { bouwFeitenBlok, alsObject, leesTekst, type FeitenBlok } from "./feiten.js";
@@ -112,6 +113,34 @@ export interface MailKern {
   tekst: string;
 }
 
+// Few-shot-blok uit de leervoorbeelden van het escalatie-dashboard. Kort en
+// begrensd: maximaal drie voorbeelden, elk veld afgeknipt, zodat de prompt
+// niet uit zijn voegen barst en de cache niet bij elke mail opnieuw schrijft.
+const MAX_VOORBEELDEN = 3;
+const MAX_VOORBEELD_TEKENS = 600;
+
+function knipVoorbeeld(tekst: string | null | undefined): string {
+  const t = (tekst ?? "").trim();
+  return t.length > MAX_VOORBEELD_TEKENS ? `${t.slice(0, MAX_VOORBEELD_TEKENS)}...` : t;
+}
+
+export function bouwVoorbeeldBlok(voorbeelden: Leervoorbeeld[]): string {
+  const bruikbaar = voorbeelden
+    .filter((v) => (v.verzondenTekst ?? "").trim() !== "" && (v.klantVraag ?? "").trim() !== "")
+    .slice(0, MAX_VOORBEELDEN);
+  if (bruikbaar.length === 0) return "";
+  const regels = bruikbaar.map((v, i) => {
+    const kop = `Voorbeeld ${i + 1}${v.taal ? ` (taal ${v.taal})` : ""}:`;
+    return `${kop}\nKlant schreef: ${knipVoorbeeld(v.klantVraag)}\nDoor een mens goedgekeurd antwoord: ${knipVoorbeeld(v.verzondenTekst)}`;
+  });
+  return (
+    "\n\nZO HEEFT EEN MENS EERDERE, VERGELIJKBARE GEVALLEN BEANTWOORD. Volg de toon en de lijn " +
+    "van deze voorbeelden waar ze passen, maar neem er GEEN feiten, bedragen of toezeggingen uit " +
+    "over; feiten komen uitsluitend uit de feitenset hierboven.\n\n" +
+    regels.join("\n\n")
+  );
+}
+
 /**
  * Kernfunctie: stel een concept op. Werkt op een al gebouwd FeitenBlok en een
  * concrete mail, zodat de laag testbaar is met een gestubde Claude-client.
@@ -121,7 +150,11 @@ export async function stelOpKern(
   mail: MailKern,
   feiten: FeitenBlok,
   taalHint?: BotTaal,
-  opties: { magOrderVragen?: boolean } = {},
+  opties: {
+    magOrderVragen?: boolean;
+    /** Foto's/screenshots uit de mail; gaan als image-blokken mee naar het model. */
+    afbeeldingen?: Array<{ mediaType: string; base64: string }>;
+  } = {},
 ): Promise<ConceptKern> {
   const taal: BotTaal = taalHint ?? (isTaal(feiten.taal) ? feiten.taal : "en");
   const onderwerp = bouwOnderwerp(mail.onderwerp, feiten);
@@ -169,7 +202,12 @@ export async function stelOpKern(
   //    bestelling, zonder bestelling maar met een algemene vraag, of met een
   //    ordervraag waarvan we de bestelling niet vinden.
   const modus: Opstelmodus = orderOntbreekt ? "order_onbekend" : feiten.bekend ? "normaal" : "algemeen";
-  const systeem = opstellenSysteem(veiligeIntent, taal, feiten.land || null, modus);
+  // Leren van correcties (fase 2a): eerdere gevallen waarin Sabur op het
+  // escalatie-dashboard een EIGEN antwoord schreef, gaan als voorbeelden mee.
+  // Best effort met cache; mislukt het ophalen, dan gewoon zonder voorbeelden.
+  const voorbeelden = await haalLeervoorbeelden(veiligeIntent);
+  const systeem =
+    opstellenSysteem(veiligeIntent, taal, feiten.land || null, modus) + bouwVoorbeeldBlok(voorbeelden);
   const gebruiker = opstellenGebruiker({
     intent: veiligeIntent,
     taal,
@@ -186,6 +224,7 @@ export async function stelOpKern(
       model: kiesModel("MAILBOT_MODEL_OPSTELLEN", MODEL_OPSTELLEN),
       systeem,
       gebruiker,
+      afbeeldingen: opties.afbeeldingen,
       // Ruim genoeg zodat adaptief denken plus het korte antwoord niet
       // afgekapt worden; ongebruikte ruimte kost niets. Medium inspanning is
       // voor een korte servicemail de goede balans tussen kwaliteit en kosten.
@@ -308,6 +347,7 @@ export async function stelOp(invoer: OpstelInvoer): Promise<Concept> {
     : "mens_nodig";
   const kern = await stelOpKern(intent, mailUitInkomend(invoer.mail), feitenBlok, taal, {
     magOrderVragen: invoer.magOrderVragen ?? true,
+    afbeeldingen: invoer.mail?.bijlagen,
   });
   return {
     onderwerp: kern.onderwerp,
