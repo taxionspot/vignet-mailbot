@@ -177,7 +177,12 @@ export async function haalOrder(zoek: OrderZoek): Promise<BotOrderAntwoord> {
  * dan naar Sabur in plaats van blind te herhalen.
  */
 export async function stuurActie(opdracht: ActieOpdracht): Promise<ActieResultaat> {
-  const uitvoerActies: UitvoerActie[] = ["annuleer_refund", "resend_bevestiging", "resend_bewijs"];
+  const uitvoerActies: UitvoerActie[] = [
+    "annuleer_refund",
+    "resend_bevestiging",
+    "resend_bewijs",
+    "kenteken_correctie",
+  ];
   if (!(uitvoerActies as string[]).includes(opdracht.actie)) {
     // antwoord_sturen en escalatie_sturen horen niet via /api/bot/actie.
     return {

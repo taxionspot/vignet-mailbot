@@ -236,6 +236,13 @@ export function bouwFeitenBlok(feiten: OrderFeiten | null | undefined): FeitenBl
     leesTekst(kern, "statusUrl", "statusLink", "statuslink") ||
     (statusToken ? `${siteUrl()}/status/${statusToken}` : "");
 
+  // Openstaand inkoopprobleem (foutlus 03-08): het portaal weigerde het
+  // kenteken en de klant heeft (meestal) al een verificatiemail van ons. Dat
+  // hoort in de feiten, anders vertelt de bot bij "waar blijft mijn vignet"
+  // een wachtrij-verhaal dat niet klopt.
+  const inkoopProbleemReden = leesTekst(kern, "inkoopProbleem.reden");
+  const inkoopVerificatieMail = Boolean(leesTekst(kern, "inkoopProbleem.verificatieMailAt"));
+
   // Valuta-val: bij een Pools kenteken is er in zloty afgerekend. Dan noemen we
   // het bedrag dat de klant echt betaald heeft, en rekenen we nooit zelf om.
   const anderValuta = valutaRuw !== "EUR" && chargeCents != null;
@@ -271,6 +278,19 @@ export function bouwFeitenBlok(feiten: OrderFeiten | null | undefined): FeitenBl
   zet("Kenteken", kenteken);
   zet("Ingangsdatum", startDatum);
   zet("Stand van zaken", statusInGewoneTaal(fulfilmentStatus, geplandOp));
+  if (inkoopProbleemReden === "kenteken_geweigerd") {
+    zet(
+      "Let op",
+      inkoopVerificatieMail
+        ? "het officiele portaal accepteerde het opgegeven kenteken niet; wij hebben de klant per e-mail gevraagd het kenteken te controleren. Zodra de klant het corrigeert via de statuspagina, of het juiste kenteken doorgeeft, registreren wij direct verder. Vraag hiernaar in je antwoord als de klant een statusvraag stelt."
+        : "het officiele portaal accepteerde het opgegeven kenteken niet; vraag de klant het kenteken te controleren zoals het op het kentekenbewijs staat en het via de statuspagina te corrigeren."
+    );
+  } else if (inkoopProbleemReden) {
+    zet(
+      "Let op",
+      "de registratie loopt tijdelijk vertraging op door een technisch punt aan onze kant; een collega kijkt ernaar. Beloof geen levertijd."
+    );
+  }
   zet("Betaling", betaald ? "betaald" : betaalStatus ? "nog niet afgerond" : "");
   zet("Betaald bedrag", bedragTekst);
   zet("Statuslink", statusLink);

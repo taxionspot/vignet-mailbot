@@ -249,6 +249,14 @@ export interface OrderFeiten {
   /** ISO-tijd van de betaling. */
   betaaldAt?: string;
   fulfilmentStatus: FulfilmentStatus;
+  /**
+   * Openstaand inkoopprobleem (foutlus 03-08): de runner kon de order niet
+   * klaarzetten. Bij reden "kenteken_geweigerd" heeft de app de klant al een
+   * verificatiemail gestuurd (verificatieMailAt); de bot vertelt dat eerlijk
+   * bij een statusvraag en kan het kenteken corrigeren zodra de klant het
+   * juiste doorgeeft.
+   */
+  inkoopProbleem?: { reden: string; verificatieMailAt?: string };
   /** Geplande inkoopdatum bij SCHEDULED (CH). */
   geplandeInkoopDatum?: string;
   ingekochtAt?: string;
@@ -381,6 +389,7 @@ export type UitvoerActie =
   | "annuleer_refund"
   | "resend_bevestiging"
   | "resend_bewijs"
+  | "kenteken_correctie"
   | "antwoord_sturen"
   | "escalatie_sturen";
 
@@ -467,9 +476,25 @@ export interface EscalatieOpdracht extends ActieBasis {
   vertrouwen?: number;
 }
 
+/**
+ * Kentekencorrectie (foutlus 03-08): de klant bevestigde per mail zijn juiste
+ * kenteken terwijl de order nog niet is ingekocht. De app doet dezelfde
+ * validatie en atomische statusguard als de correctieknop op de statuspagina,
+ * en zet een geparkeerde kentekenfout meteen terug in de wachtrij.
+ */
+export interface KentekenCorrectieOpdracht extends ActieBasis {
+  actie: "kenteken_correctie";
+  orderToken: string;
+  /** De nieuwe plaat, letterlijk zoals de klant hem in de mail noemde. */
+  plaat: string;
+  /** Afzenderadres; de app eist exact order.email (identiteitsregel). */
+  afzender: string;
+}
+
 export type ActieOpdracht =
   | AnnuleerRefundOpdracht
   | ResendOpdracht
+  | KentekenCorrectieOpdracht
   | AntwoordOpdracht
   | EscalatieOpdracht;
 

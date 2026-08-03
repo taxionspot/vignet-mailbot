@@ -13,7 +13,13 @@ import { config } from "./config.js";
 import { log } from "./log.js";
 import { parseMail, isVerzondenKopie } from "./parse.js";
 import { Postbus } from "./imap.js";
-import { geenMatch, matchOrder, type MatchResultaat } from "./match.js";
+import {
+  geenMatch,
+  kandidaatPlaten,
+  matchOrder,
+  normaliseerPlaat,
+  type MatchResultaat,
+} from "./match.js";
 import { ApiFout } from "./api.js";
 import { haalOrder, schrijfLog } from "./api.js";
 import {
@@ -951,6 +957,42 @@ async function verwerkKentekenFout(
     await schrijfLog(regel);
     log.info(`Kenteken_fout na inkoop op ${order.orderToken}, geescaleerd`);
     return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
+  }
+
+  // Foutlus (03-08): noemt de klant precies EEN nieuw kenteken in zijn mail,
+  // dan corrigeert de bot dat ZELF via de app en gaat een geparkeerde
+  // kentekenfout meteen terug in de wachtrij. De app doet dezelfde validatie
+  // en atomische statusguard als de correctieknop op de statuspagina en stuurt
+  // ook de correctiemail. Voorwaarden hier: alleen voor inkoop (dat is deze
+  // tak), afzender aantoonbaar echt (DMARC/DKIM), en er is geen twijfel over
+  // WELK kenteken (precies een kandidaat die afwijkt van de huidige plaat).
+  // Bij elke twijfel of weigering: gewoon de bestaande uitleg-flow.
+  if (mail.afzenderGeauthenticeerd) {
+    const huidig = normaliseerPlaat(order.plateWeergave);
+    const kandidaten = kandidaatPlaten(mail.tekstSchoon, [order.orderToken]).filter(
+      (p) => p !== huidig
+    );
+    if (kandidaten.length === 1) {
+      const res = await voerActieUit({
+        actie: "kenteken_correctie",
+        botMailId: mail.botMailId,
+        orderToken: order.orderToken,
+        plaat: kandidaten[0],
+        afzender: mail.vanAdres,
+      });
+      if (res.ok && res.uitgevoerd) {
+        const regel = basisLog(mail, classificatie, order);
+        regel.actie = "kenteken_correctie";
+        regel.bestemming = config.mappen.afgehandeld;
+        regel.melding = `kenteken gecorrigeerd naar ${kandidaten[0]}; de klant kreeg de correctiemail van de app`;
+        await schrijfLog(regel);
+        log.info(`Kenteken ${order.orderToken} door de bot gecorrigeerd naar ${kandidaten[0]}`);
+        return { bestemming: config.mappen.afgehandeld, actie: "kenteken_correctie" };
+      }
+      log.warn(
+        `Kentekencorrectie ${order.orderToken} niet uitgevoerd (${res.fout ?? "geweigerd"}), val terug op de uitleg-flow`
+      );
+    }
   }
 
   const invoer: OpstelInvoer = {
