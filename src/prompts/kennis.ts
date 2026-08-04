@@ -240,6 +240,22 @@ export const ANNULEER_REGEL: string[] = [
   "LET OP, tijdelijke tegenspraak op de site: op de statuspagina en in de veelgestelde vragen staat nog dat de klant via de statuspagina kan annuleren. Die knop bestaat niet meer. Zegt een klant dat hij die knop zoekt, spreek hem dan niet tegen en zeg niet dat hij het verkeerd ziet. Erken dat die tekst nog op de site staat, bied excuses aan voor de verwarring, en regel het gewoon per mail.",
 ];
 
+// Feitelijke klachten over de prijs, de servicekosten of ons vermeende officiele
+// karakter. Toegevoegd 04-08 (besluit Sabur): zulke mails gingen allemaal naar
+// een mens, terwijl het antwoord altijd uit dezelfde vaste feiten bestaat. De
+// bot mag hier zelf op antwoorden zolang het geen ECHTE juridische zaak is
+// (advocaat, incasso, toezichthouder, aangekondigde terugboeking); dat blijft
+// mensenwerk. De grondhouding: erken de teleurstelling, geef de feiten, zeg
+// eerlijk wat wel en wat niet kan, en beloof NOOIT geld terug.
+export const KLACHT_REGEL: string[] = [
+  "Klaagt de klant dat hij dacht bij het officiele portaal te bestellen: erken dat dit vervelend is, leg uit dat VignetteHub een onafhankelijke bestelservice is en geen overheidsinstantie of toloperator, en dat dit op de site staat (in de bedrijfsregel onderaan elke pagina, in het bestelscherm zelf en in de veelgestelde vragen). Ga niet in discussie over wie wat gezien heeft en zeg nooit dat de klant beter had moeten kijken.",
+  "Klaagt de klant over de hoogte van het bedrag of over servicekosten: het bedrag dat hij betaalde is een TOTAALPRIJS die vooraf op het scherm stond, met de registratie en onze dienst erin. Tijdens het betalen is er niets bijgekomen. Noem alleen het totaalbedrag uit de feitenset; noem NOOIT hoe dat bedrag is opgebouwd, geen officieel tarief en geen los servicebedrag.",
+  "Vraagt de klant om zijn geld terug NA de registratie: leg uit wat er feitelijk is gebeurd, met de tijdstippen uit de feitenset (besteld, betaald, geregistreerd), en dat hij bij het bestellen twee verklaringen heeft aangevinkt: de opdracht om het vignet namens hem te registreren, en het verzoek om direct te beginnen waarbij het herroepingsrecht vervalt zodra het vignet geregistreerd is. Daarom is terugbetaling na registratie niet mogelijk. Wij hebben het officiele tarief namelijk al aan de operator betaald en een digitaal vignet is vast verbonden aan het kenteken; de operator neemt het niet terug.",
+  "Zeg er altijd bij wat de klant WEL heeft: het vignet is geldig en actief op zijn kenteken, hij kan dat zelf controleren op de officiele controlelink van het land, en de officiele bevestiging komt rechtstreeks van de operator in zijn eigen mailbox.",
+  "Doe bij een klacht nooit een toezegging over geld, een coulanceregeling of een gedeeltelijke terugbetaling. Dat is altijd een beslissing van een mens. Kan de klant zich niet vinden in het antwoord, zeg dan dat hij kan reageren en dat een collega er dan naar kijkt.",
+  "Blijft de klant bij zijn standpunt of noemt hij een advocaat, een incassobureau, een toezichthouder of een terugboeking via zijn bank of PayPal, antwoord dan zelf niet meer. Dat hoort bij een mens.",
+];
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -274,6 +290,7 @@ export function kennisBlok(landCode?: string | null): string {
     ...sectie("Voertuigen:", VOERTUIG_KENNIS),
     ...sectie("Wat wij niet leveren:", NIET_AANBOD_KENNIS),
     ...sectie("Annuleren en terugbetalen:", ANNULEER_REGEL),
+    ...sectie("Klachten over prijs, servicekosten of onze rol:", KLACHT_REGEL),
     gekozen ? `Land van deze bestelling:` : "Landen die wij bedienen:",
     ...landRegels,
   ].join("\n");

@@ -66,10 +66,18 @@ export interface ConceptKern {
 }
 
 // Intents die geld of recht raken: nooit zelf beantwoorden.
+//
+// klacht_juridisch staat hier sinds 04-08 NIET meer in. Niet omdat klachten
+// ongevaarlijk zijn, maar omdat de lus in index.ts die beslissing nu neemt met
+// een deterministische poort (src/klacht.ts): alleen bij een gevonden order,
+// een bewezen identiteit, een echt afzenderadres en zonder juridisch signaal
+// (advocaat, incasso, toezichthouder, terugboeking) stelt hij zelf op. In alle
+// andere gevallen roept index.ts deze laag helemaal niet aan en escaleert hij.
+// Zou stelOpKern hier alsnog hard escaleren, dan zou die zorgvuldig gebouwde
+// uitzondering nooit een antwoord opleveren.
 const HARDE_ESCALATIE: ReadonlySet<BotIntent> = new Set<BotIntent>([
   "factuur",
   "betaling_probleem",
-  "klacht_juridisch",
 ]);
 
 // Intents die een gevonden order nodig hebben om zinnig te beantwoorden. Eén

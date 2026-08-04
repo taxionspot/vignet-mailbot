@@ -243,6 +243,15 @@ export function bouwFeitenBlok(feiten: OrderFeiten | null | undefined): FeitenBl
   const inkoopProbleemReden = leesTekst(kern, "inkoopProbleem.reden");
   const inkoopVerificatieMail = Boolean(leesTekst(kern, "inkoopProbleem.verificatieMailAt"));
 
+  // Al uitgevoerde terugbetaling en de akkoorden bij het bestellen (04-08).
+  // Hiermee kan de bot een vraag over een al geannuleerde bestelling en een
+  // klacht over herroeping met FEITEN beantwoorden in plaats van te escaleren.
+  const terugbetaaldBedrag = leesTekst(kern, "terugbetaling.bedragWeergave");
+  const terugbetaaldOp = formatteerDatum(leesTekst(kern, "terugbetaling.at"));
+  const toestemmingOp = formatteerDatum(leesTekst(kern, "toestemming.at"));
+  // leesTekst geeft niets terug bij een boolean, dus die lezen we rechtstreeks.
+  const directeUitvoering = viaPad(kern, "toestemming.directeUitvoering") === true;
+
   // Valuta-val: bij een Pools kenteken is er in zloty afgerekend. Dan noemen we
   // het bedrag dat de klant echt betaald heeft, en rekenen we nooit zelf om.
   const anderValuta = valutaRuw !== "EUR" && chargeCents != null;
@@ -278,6 +287,18 @@ export function bouwFeitenBlok(feiten: OrderFeiten | null | undefined): FeitenBl
   zet("Kenteken", kenteken);
   zet("Ingangsdatum", startDatum);
   zet("Stand van zaken", statusInGewoneTaal(fulfilmentStatus, geplandOp));
+  if (terugbetaaldBedrag) {
+    zet(
+      "Al terugbetaald",
+      `${terugbetaaldBedrag}${terugbetaaldOp ? ` op ${terugbetaaldOp}` : ""}. Het geld gaat terug via dezelfde betaalmethode en staat doorgaans binnen 1 tot 3 werkdagen op de rekening van de klant. Dit is al gebeurd; zeg het als een feit en beloof niets nieuws.`
+    );
+  }
+  if (toestemmingOp && directeUitvoering) {
+    zet(
+      "Akkoord bij het bestellen",
+      `Op ${toestemmingOp} heeft de klant zelf twee verplichte verklaringen aangevinkt: de opdracht om het vignet namens hem te registreren, en het verzoek om direct met de uitvoering te beginnen waarbij het herroepingsrecht vervalt zodra het vignet geregistreerd is. Gebruik dit ALLEEN als de klant om terugbetaling of herroeping vraagt, en breng het rustig en feitelijk, nooit als verwijt.`
+    );
+  }
   if (inkoopProbleemReden === "kenteken_geweigerd") {
     zet(
       "Let op",

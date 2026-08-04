@@ -146,6 +146,7 @@ export async function haalOrder(zoek: OrderZoek): Promise<BotOrderAntwoord> {
   const params = new URLSearchParams();
   if (zoek.soort === "token") params.set("token", zoek.token);
   else if (zoek.soort === "email") params.set("email", zoek.email);
+  else if (zoek.soort === "paypal") params.set("paypal", zoek.paypal);
   else params.set("plaat", zoek.plaat);
 
   try {

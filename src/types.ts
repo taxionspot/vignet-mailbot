@@ -257,6 +257,18 @@ export interface OrderFeiten {
    * juiste doorgeeft.
    */
   inkoopProbleem?: { reden: string; verificatieMailAt?: string };
+  /**
+   * Al uitgevoerde terugbetaling (04-08). Aanwezig zodra er echt geld terug is
+   * gegaan, zodat de bot een vraag over een AL geannuleerde bestelling met
+   * feiten kan beantwoorden in plaats van te escaleren.
+   */
+  terugbetaling?: { at?: string; bedragWeergave: string; volledig: boolean };
+  /**
+   * Wat de klant bij het bestellen heeft aangevinkt, met tijdstip. Nodig om een
+   * klacht over herroeping feitelijk te kunnen beantwoorden. Bevat bewust geen
+   * IP of user-agent; die horen in het zaakdossier, niet in een klantmail.
+   */
+  toestemming?: { at: string; opdracht: boolean; directeUitvoering: boolean };
   /** Geplande inkoopdatum bij SCHEDULED (CH). */
   geplandeInkoopDatum?: string;
   ingekochtAt?: string;
@@ -283,7 +295,10 @@ export interface BotOrderAntwoord {
 export type OrderZoek =
   | { soort: "token"; token: string }
   | { soort: "email"; email: string }
-  | { soort: "plaat"; plaat: string };
+  | { soort: "plaat"; plaat: string }
+  // PayPal-transactie of capture-id, om een kwestiemail van PayPal aan de
+  // juiste bestelling te koppelen (zulke mails noemen geen ordernummer).
+  | { soort: "paypal"; paypal: string };
 
 // ---------------------------------------------------------------------------
 // Classificatie (LLM-aanroep 1, claude-haiku-4-5)

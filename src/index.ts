@@ -16,10 +16,13 @@ import { Postbus } from "./imap.js";
 import {
   geenMatch,
   kandidaatPlaten,
+  lijktOpTypefout,
   matchOrder,
   normaliseerPlaat,
   type MatchResultaat,
 } from "./match.js";
+import { magKlachtZelfBeantwoorden } from "./klacht.js";
+import { leesPaypalKwestie, type PaypalKwestie } from "./paypal-kwestie.js";
 import { ApiFout } from "./api.js";
 import { haalOrder, schrijfLog } from "./api.js";
 import {
@@ -34,6 +37,8 @@ import {
   registreerRefund,
   orderVraagAantal,
   registreerOrderVraag,
+  identiteitEscalatieAantal,
+  registreerIdentiteitEscalatie,
   type CapUitkomst,
 } from "./guards.js";
 import {
@@ -398,6 +403,21 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
     return { bestemming: config.mappen.afgehandeld, actie: "geen" };
   }
 
+  // ---- 1c. PayPal-kwestie: verrijken en ontdubbelen (besluit Sabur 04-08) ----
+  // Zo'n mail noemt geen ordernummer, dus het model kon er nooit een bestelling
+  // bij vinden en escaleerde met lege handen; bij elke herinnering opnieuw. Nu
+  // zoeken we de order zelf op via het transactie-id, escaleren we EEN keer per
+  // kwestie met alles erbij, en slaan we de modelaanroep over. Antwoorden doen
+  // we nooit: PayPal is geen klant.
+  const kwestie = leesPaypalKwestie({
+    vanAdres: mail.vanAdres,
+    onderwerp: mail.onderwerp,
+    tekst: mail.tekstVolledig,
+  });
+  if (kwestie.isKwestie) {
+    return await verwerkPaypalKwestie(mail, kwestie);
+  }
+
   // ---- 2. Classificeren (LLM 1) ----
   let classificatie: Classificatie;
   try {
@@ -467,6 +487,40 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
 
   // ---- 4a. Escalatie-only intents (factuur, betaling, klacht, mens_nodig) ----
   if (isEscalatieIntent) {
+    // FEITELIJKE KLACHT (besluit Sabur 04-08). Een klacht over de prijs, over
+    // de servicekosten, over ons vermeende officiele karakter, of een verzoek
+    // om geld terug terwijl het vignet al geregistreerd is, is met vaste feiten
+    // uit de bestelling te beantwoorden. Die hoeft niet naar een mens.
+    // Poorten: er is een bestelling, de afzender is aantoonbaar de besteller,
+    // het adres is echt, en er is GEEN juridisch signaal (advocaat, incasso,
+    // toezichthouder, aangekondigde terugboeking). Bij twijfel escaleren, want
+    // beoordeelKlacht is deterministisch en fail-closed.
+    if (intent === "klacht_juridisch" && order !== null && !match.identiteitMismatch) {
+      const oordeel = magKlachtZelfBeantwoorden({
+        heeftOrder: true,
+        identiteitKlopt: true,
+        afzenderGeauthenticeerd: mail.afzenderGeauthenticeerd,
+        tekst: mail.tekstVolledig,
+        onderwerp: mail.onderwerp,
+      });
+      if (oordeel.mag) {
+        log.info(`Feitelijke klacht op ${order.orderToken}, de bot beantwoordt hem zelf`);
+        const invoer: OpstelInvoer = {
+          mail,
+          classificatie,
+          order,
+          identiteitMismatch: false,
+          meerdereOrders: match.aantalGevonden > 1,
+          voorgesteldeActie: "antwoord_sturen",
+          refundToegestaan: false,
+          naInkoop: (NA_INKOOP_STATUSSEN as readonly string[]).includes(order.fulfilmentStatus),
+          doel: "klant",
+          afzenderNaam: config.afzenderNaam,
+        };
+        return await stelOpEnVerstuur(mail, classificatie, order, invoer);
+      }
+      log.info(`Klacht op ${order.orderToken} gaat naar een mens: ${oordeel.reden}`);
+    }
     // Uitzondering (besluit Sabur 03-08): een afschrijvingsklacht terwijl er op
     // dit adres GEEN bestelling bestaat en de klant ook geen VH-nummer noemt,
     // is in de praktijk vrijwel altijd een afschrijving van een ANDER bedrijf
@@ -648,25 +702,47 @@ async function verwerkIdentiteitMismatch(
     regel.fout = "reply_mislukt";
   }
 
-  // Altijd escaleren, ongeacht of de klant-reply lukte (spec sectie 4).
-  const esc = bouwEscalatie(mail, {
-    reden: "identiteit_mismatch",
-    toelichting: `Afzender ${mail.vanAdres} is NIET de besteller van ${order.orderToken} (${order.email}). Geen gegevens gedeeld.`,
-    intent: classificatie.intent,
-    vertrouwen: classificatie.vertrouwen,
-    orderToken: order.orderToken,
-  });
-  await voerActieUit(esc);
+  // Escaleren, maar EEN KEER per afzender en bestelling (besluit Sabur 04-08).
+  // Tot nu leverde elke vervolgmail van dezelfde persoon over dezelfde order een
+  // nieuwe case op; op 04-08 stonden er zo vier open voor twee mensen. De klant
+  // krijgt nog steeds elke keer de vaste privacytekst, want dat is het enige
+  // nuttige antwoord en kost niets.
+  const alGeescaleerd = identiteitEscalatieAantal(mail.vanAdres, order.orderToken) > 0;
+  if (!alGeescaleerd) {
+    // Typefout in het besteladres? Dan is dit geen vreemde maar de klant zelf,
+    // die vanaf zijn juiste adres mailt terwijl er bij het bestellen een letter
+    // is verschreven. Wij delen nog steeds niets, maar Sabur ziet het meteen.
+    const typefout = lijktOpTypefout(mail.vanAdres, order.email);
+    const esc = bouwEscalatie(mail, {
+      reden: "identiteit_mismatch",
+      toelichting: typefout
+        ? `Afzender ${mail.vanAdres} is NIET de besteller van ${order.orderToken} (${order.email}), maar de twee adressen schelen maar een of twee tekens op hetzelfde domein. Waarschijnlijk een TYPEFOUT bij het bestellen; de klant kan dan nooit vanaf het besteladres mailen. Geen gegevens gedeeld. Controleer dit zelf voordat je iets deelt.`
+        : `Afzender ${mail.vanAdres} is NIET de besteller van ${order.orderToken} (${order.email}). Geen gegevens gedeeld.`,
+      intent: classificatie.intent,
+      vertrouwen: classificatie.vertrouwen,
+      orderToken: order.orderToken,
+    });
+    await voerActieUit(esc);
+    registreerIdentiteitEscalatie(mail.vanAdres, order.orderToken);
+    if (typefout) {
+      log.info(`Identiteit-mismatch op ${order.orderToken} lijkt een typefout in het besteladres`);
+    }
+  } else {
+    log.info(
+      `Identiteit-mismatch op ${order.orderToken} van ${mail.vanAdres} al eerder geescaleerd, alleen de vaste tekst gestuurd`
+    );
+  }
 
   regel.actie = verstuurd ? "antwoord_sturen" : "escalatie_sturen";
-  regel.escalatie = true;
+  regel.escalatie = !alGeescaleerd;
   regel.escalatieReden = "identiteit_mismatch";
   regel.antwoordTekst = antwoordTekst;
   regel.verstuurdAt = verstuurd ? new Date().toISOString() : undefined;
-  regel.bestemming = config.mappen.escalatie;
+  regel.bestemming = alGeescaleerd ? config.mappen.afgehandeld : config.mappen.escalatie;
+  regel.melding = alGeescaleerd ? "identiteit-mismatch al eerder gemeld, niet opnieuw geescaleerd" : undefined;
   await schrijfLog(regel);
-  log.info(`Identiteit-mismatch op ${order.orderToken}, geescaleerd: ${mail.vanAdres}`);
-  return { bestemming: config.mappen.escalatie, actie: regel.actie };
+  log.info(`Identiteit-mismatch op ${order.orderToken}: ${mail.vanAdres}`);
+  return { bestemming: regel.bestemming, actie: regel.actie };
 }
 
 // status_vraag en product_vraag: gewoon een inhoudelijk antwoord uit de feiten.
@@ -886,6 +962,79 @@ async function verwerkAnnuleerZonderOrder(
   return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
 }
 
+// PayPal-kwestie (04-08). Zoekt zelf de bestelling op via het transactie-id,
+// escaleert EEN keer per kwestie met order, bedrag en dossierlink erbij, en
+// antwoordt nooit. Ontdubbelen gebeurt op het kwestienummer (of het eerste
+// transactie-id) via dezelfde teller als de identiteit-escalaties.
+async function verwerkPaypalKwestie(
+  mail: InkomendeMail,
+  kwestie: PaypalKwestie
+): Promise<VerwerkUitkomst> {
+  const regel = basisLog(mail, null, null);
+
+  // Bestelling zoeken op elk gevonden transactie-id. Alleen-lezen en best
+  // effort: lukt het niet, dan escaleren we gewoon zonder order.
+  let order: OrderFeiten | null = null;
+  for (const id of kwestie.transactieIds) {
+    try {
+      const antwoord = await haalOrder({ soort: "paypal", paypal: id });
+      if (antwoord.ok && antwoord.order) {
+        order = antwoord.order;
+        break;
+      }
+    } catch (err) {
+      log.warn(`PayPal-kwestie: order zoeken op ${id} mislukte`, err);
+    }
+  }
+
+  // Ontdubbelen: tweede en volgende mail over dezelfde kwestie alleen loggen.
+  const sleutel = kwestie.dedupeSleutel;
+  const alGemeld = sleutel ? identiteitEscalatieAantal("paypal", sleutel) > 0 : false;
+  if (alGemeld) {
+    regel.actie = "geen";
+    regel.bestemming = config.mappen.afgehandeld;
+    regel.samenvatting = `PayPal-kwestie ${sleutel}, al eerder gemeld`;
+    await schrijfLog(regel);
+    log.info(`PayPal-kwestie ${sleutel} was al gemeld, alleen gearchiveerd`);
+    return { bestemming: config.mappen.afgehandeld, actie: "geen" };
+  }
+
+  const stukken = [
+    `PAYPAL-KWESTIE${kwestie.kwestieNummer ? ` ${kwestie.kwestieNummer}` : ""}. Reageer op tijd in het PayPal-dashboard; een kwestie sluit vanzelf in het nadeel van de verkoper.`,
+  ];
+  if (order) {
+    stukken.push(
+      `Het gaat om ${order.orderToken} (${order.productNaam}, kenteken ${order.plateWeergave}, ${order.bedragWeergave}, status ${order.fulfilmentStatus}, klant ${order.email}).`,
+      `Zaakdossier met alle bewijsstukken: https://vignettehub.com/admin/orders?q=${order.orderToken} (knop "Download zaakdossier").`
+    );
+  } else {
+    stukken.push(
+      kwestie.transactieIds.length
+        ? `Geen bestelling gevonden op transactie ${kwestie.transactieIds.join(", ")}. Zoek zelf in PayPal welke betaling erbij hoort.`
+        : "In de mail stond geen bruikbaar transactienummer; zoek de kwestie op in het PayPal-dashboard."
+    );
+  }
+
+  const esc = bouwEscalatie(mail, {
+    reden: "intent_klacht_juridisch",
+    toelichting: stukken.join(" "),
+    spoed: true,
+    ...(order ? { orderToken: order.orderToken } : {}),
+  });
+  await voerActieUit(esc);
+  if (sleutel) registreerIdentiteitEscalatie("paypal", sleutel);
+
+  regel.actie = "escalatie_sturen";
+  regel.escalatie = true;
+  regel.escalatieReden = "intent_klacht_juridisch";
+  regel.bestemming = config.mappen.escalatie;
+  regel.samenvatting = `PayPal-kwestie${kwestie.kwestieNummer ? ` ${kwestie.kwestieNummer}` : ""}${order ? ` bij ${order.orderToken}` : " zonder gevonden order"}`;
+  if (order) regel.orderToken = order.orderToken;
+  await schrijfLog(regel);
+  log.warn(`PayPal-kwestie geescaleerd${order ? ` (${order.orderToken})` : " zonder order"}`);
+  return { bestemming: config.mappen.escalatie, actie: "escalatie_sturen" };
+}
+
 // Afschrijvingsklacht (betaling_probleem) zonder bestelling en zonder genoemd
 // VH-nummer: de klant ziet een afschrijving die niet van ons kan zijn (geen
 // order, geen abonnementen). De bot legt dat zelf uit met een vaste tekst en
@@ -1017,6 +1166,28 @@ async function verwerkAnnuleren(
   order: OrderFeiten,
   match: MatchResultaat
 ): Promise<VerwerkUitkomst> {
+  // AL GEANNULEERD (besluit Sabur 04-08). Staat de bestelling al op REFUNDED of
+  // CANCELLED, dan valt er niets te beslissen: het is al gebeurd. De klant wil
+  // gewoon weten of het geregeld is. Dat beantwoordt de bot zelf met de feiten
+  // uit de bestelling (bedrag en datum van de terugbetaling); er wordt niets
+  // uitgevoerd en niets toegezegd. Hiervoor ging elke zo'n mail naar Sabur.
+  if (order.fulfilmentStatus === "REFUNDED" || order.fulfilmentStatus === "CANCELLED") {
+    const invoer: OpstelInvoer = {
+      mail,
+      classificatie,
+      order,
+      identiteitMismatch: false,
+      meerdereOrders: match.aantalGevonden > 1,
+      voorgesteldeActie: "antwoord_sturen",
+      refundToegestaan: false,
+      naInkoop: false,
+      doel: "klant",
+      afzenderNaam: config.afzenderNaam,
+    };
+    log.info(`Annuleerverzoek op ${order.orderToken}, al ${order.fulfilmentStatus}: zelf met feiten beantwoorden`);
+    return await stelOpEnVerstuur(mail, classificatie, order, invoer);
+  }
+
   // Poort 1: betaling moet COMPLETED zijn.
   if (order.betaalStatus !== "COMPLETED") {
     return await escaleerAnnuleren(

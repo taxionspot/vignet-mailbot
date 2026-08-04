@@ -58,6 +58,12 @@ export function identiteitKlopt(afzenderAdres: string, order: OrderFeiten): bool
   return van === orderEmail;
 }
 
+// Typefout in het besteladres herkennen: staat in src/adres.ts, want dat is
+// pure rekenkunde en moet ook zonder .env te testen zijn (match.ts trekt via
+// api.js de hele configuratie binnen). Hier herexporteren zodat aanroepers een
+// logische plek houden.
+export { lijktOpTypefout } from "./adres.js";
+
 // ---------------------------------------------------------------------------
 // VH-nummer uit de tekst halen
 // ---------------------------------------------------------------------------

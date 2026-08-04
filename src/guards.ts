@@ -222,6 +222,14 @@ interface CapState {
    * 24-07: eenmaal zelf doorvragen, daarna naar Sabur).
    */
   orderVraagPerThread: Record<string, ThreadTeller>;
+  /**
+   * Hoe vaak we voor een combinatie afzender+order al een identiteit-escalatie
+   * hebben gestuurd (04-08). Zonder deze teller leverde elke mail van dezelfde
+   * persoon over dezelfde bestelling een nieuwe case op; op 04-08 stonden er zo
+   * vier cases open voor twee mensen. De klant krijgt nog wel elke keer de vaste
+   * privacytekst, want die kost niets en is het enige nuttige antwoord.
+   */
+  identiteitPerOrder?: Record<string, ThreadTeller>;
 }
 
 const VENSTER_24U_MS = 24 * 60 * 60 * 1000;
@@ -253,6 +261,7 @@ function legeState(): CapState {
     perAfzender: {},
     perThread: {},
     orderVraagPerThread: {},
+    identiteitPerOrder: {},
   };
 }
 
@@ -273,6 +282,8 @@ function laadState(): CapState {
         perThread: geladen.perThread ?? {},
         // Ontbreekt in state-bestanden van voor 24-07: dan gewoon leeg beginnen.
         orderVraagPerThread: geladen.orderVraagPerThread ?? {},
+        // Ontbreekt in state-bestanden van voor 04-08: dan leeg beginnen.
+        identiteitPerOrder: geladen.identiteitPerOrder ?? {},
       };
     } else {
       state = legeState();
@@ -325,6 +336,12 @@ function rolloverEnOpruimen(s: CapState): void {
   }
   for (const sleutel of Object.keys(s.orderVraagPerThread ?? {})) {
     if (nu - s.orderVraagPerThread[sleutel].laatstAt > THREAD_BEWAAR_MS) delete s.orderVraagPerThread[sleutel];
+  }
+  const identiteit = s.identiteitPerOrder;
+  if (identiteit) {
+    for (const sleutel of Object.keys(identiteit)) {
+      if (nu - identiteit[sleutel].laatstAt > THREAD_BEWAAR_MS) delete identiteit[sleutel];
+    }
   }
 }
 
@@ -467,6 +484,34 @@ function afzenderSleutel(mail: InkomendeMail): string {
  * Registreert dat de bot in deze thread om een ordernummer of kenteken heeft
  * gevraagd. Roep dit pas aan NADAT die vraag echt verstuurd is.
  */
+// Sleutel voor de identiteit-teller: afzender plus ordernummer, allebei
+// genormaliseerd. Zo telt dezelfde persoon over dezelfde bestelling als een
+// geval, ook als hij een nieuwe thread begint.
+function identiteitSleutel(afzender: string, orderToken: string): string {
+  return `id:${String(afzender ?? "").trim().toLowerCase()}|${String(orderToken ?? "").trim().toUpperCase()}`;
+}
+
+/**
+ * Hoe vaak deze afzender al een identiteit-escalatie opleverde voor deze order.
+ * 0 = nog nooit, dan hoort er wel een escalatie te komen.
+ */
+export function identiteitEscalatieAantal(afzender: string, orderToken: string): number {
+  const s = laadState();
+  rolloverEnOpruimen(s);
+  return s.identiteitPerOrder?.[identiteitSleutel(afzender, orderToken)]?.aantal ?? 0;
+}
+
+/** Noteert dat er voor deze combinatie een escalatie is gestuurd. */
+export function registreerIdentiteitEscalatie(afzender: string, orderToken: string): void {
+  const s = laadState();
+  rolloverEnOpruimen(s);
+  if (!s.identiteitPerOrder) s.identiteitPerOrder = {};
+  const sleutel = identiteitSleutel(afzender, orderToken);
+  const bestaand = s.identiteitPerOrder[sleutel];
+  s.identiteitPerOrder[sleutel] = { aantal: (bestaand?.aantal ?? 0) + 1, laatstAt: Date.now() };
+  bewaarState();
+}
+
 export function registreerOrderVraag(mail: InkomendeMail): void {
   const s = laadState();
   rolloverEnOpruimen(s);

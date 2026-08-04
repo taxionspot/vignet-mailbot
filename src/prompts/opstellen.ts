@@ -70,7 +70,22 @@ export const INTENT_INSTRUCTIE: Record<BotIntent, string> = {
     "Is er nog niet ingekocht, leg dan uit dat de klant het kenteken zelf kan corrigeren via de knop op de statuspagina. Doe dit zelf niet namens de klant.",
   factuur: "Escaleren, niet zelf beantwoorden.",
   betaling_probleem: "Escaleren, niet zelf beantwoorden.",
-  klacht_juridisch: "Escaleren met spoed, niet zelf beantwoorden.",
+  // Sinds 04-08 komt deze intent alleen nog bij de opsteller terecht als de lus
+  // in index.ts alle poorten heeft geopend: bestelling gevonden, afzender is de
+  // besteller, adres geauthenticeerd en GEEN juridisch signaal. Dan is het een
+  // feitelijke klacht (prijs, servicekosten, "ik dacht dat jullie officieel
+  // waren", geld terug na registratie) en die beantwoord je met de feiten.
+  klacht_juridisch:
+    "Een feitelijke klacht over de prijs, de servicekosten, onze rol of een verzoek om terugbetaling. " +
+    "Erken eerst kort dat het vervelend is en ga niet in discussie over wie wat gezien heeft. " +
+    "Geef daarna de feiten uit de bestelling: wanneer besteld, wanneer betaald, wanneer geregistreerd, en " +
+    "dat het totaalbedrag vooraf op het scherm stond zonder dat er tijdens het betalen iets bij kwam. " +
+    "Is het vignet geregistreerd, leg dan uit dat de klant bij het bestellen zelf om directe uitvoering heeft " +
+    "gevraagd en heeft bevestigd dat het herroepingsrecht daarmee vervalt zodra het vignet geregistreerd is, " +
+    "en dat terugbetaling daarom niet meer mogelijk is. Noem wat de klant WEL heeft: een geldig vignet op zijn " +
+    "kenteken, zelf te controleren op de officiele controlelink. " +
+    "Doe NOOIT een toezegging over geld, coulance of een gedeeltelijke terugbetaling. " +
+    "Sluit af met de mogelijkheid om te reageren als hij het er niet mee eens is; dan kijkt een collega mee.",
   spam_overig: "Niet beantwoorden.",
   mens_nodig: "Escaleren, niet zelf beantwoorden.",
 };
