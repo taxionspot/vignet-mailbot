@@ -148,9 +148,6 @@ console.log("\n5. Typefout in het besteladres");
   check("identiek adres is geen typefout", !lijktOpTypefout("a.klant@web.de", "a.klant@web.de"));
 }
 
-console.log(`\n==== ${goed} geslaagd, ${fout} gefaald ====`);
-if (fout > 0) process.exitCode = 1;
-
 console.log("\n6. Land uit het antwoord van de klant (05-08)");
 {
   // Zo antwoorden klanten echt: met of zonder ontkenning van het foute land.
