@@ -13,6 +13,7 @@
 import { beoordeelKlacht, magKlachtZelfBeantwoorden } from "../src/klacht.js";
 import { leesPaypalKwestie } from "../src/paypal-kwestie.js";
 import { lijktOpTypefout } from "../src/adres.js";
+import { landUitTekst } from "../src/landtekst.js";
 
 let goed = 0;
 let fout = 0;
@@ -145,6 +146,33 @@ console.log("\n5. Typefout in het besteladres");
   check("compleet ander adres telt niet", !lijktOpTypefout("kraussj387@gmail.com", "alex_nataliekrauss@web.de"));
   check("kort adres telt niet", !lijktOpTypefout("bob@web.de", "rob@web.de"));
   check("identiek adres is geen typefout", !lijktOpTypefout("a.klant@web.de", "a.klant@web.de"));
+}
+
+console.log(`\n==== ${goed} geslaagd, ${fout} gefaald ====`);
+if (fout > 0) process.exitCode = 1;
+
+console.log("\n6. Land uit het antwoord van de klant (05-08)");
+{
+  // Zo antwoorden klanten echt: met of zonder ontkenning van het foute land.
+  check(
+    "duits: niet Duitsland maar Roemenie",
+    landUitTekst("Das Auto ist nicht in Deutschland zugelassen, sondern in Rumaenien.", "DE") === "RO"
+  );
+  check("nederlands: Belgie", landUitTekst("Mijn auto staat in Belgie geregistreerd.", "AT") === "BE");
+  check("engels: Romania", landUitTekst("The car is registered in Romania, not Germany.", "DE") === "RO");
+  check("frans: Belgique", landUitTekst("La voiture est immatriculee en Belgique.", "AT") === "BE");
+  check("eigen naam telt ook: Ceska republika", landUitTekst("Auto je z Ceska republika.", "DE") === "CZ");
+  check(
+    "het HUIDIGE land negeren we, anders telt dat als tweede treffer",
+    landUitTekst("Nicht Deutschland, sondern Rumaenien!", "DE") === "RO"
+  );
+  check("twee andere landen = geen mening", landUitTekst("Ik twijfel tussen Belgie en Frankrijk.", "DE") === null);
+  check("geen land genoemd = null", landUitTekst("Het kenteken is XY-123-Z, klopt dat?", "DE") === null);
+  check("lege tekst = null", landUitTekst("", "DE") === null);
+  check(
+    "losse lettergreep matcht niet (woordgrens)",
+    landUitTekst("Ik heb de polenta al besteld.", "DE") === null
+  );
 }
 
 console.log(`\n==== ${goed} geslaagd, ${fout} gefaald ====`);

@@ -502,6 +502,13 @@ export interface KentekenCorrectieOpdracht extends ActieBasis {
   orderToken: string;
   /** De nieuwe plaat, letterlijk zoals de klant hem in de mail noemde. */
   plaat: string;
+  /**
+   * Land van registratie (ISO alpha-2), alleen als de klant het EXPLICIET
+   * noemt. Bij een geweigerd kenteken is dat vaak de echte fout: de plaat
+   * klopt, maar er staat een verkeerd land bij, en dan is het vignet niet
+   * geldig. Weglaten betekent: land ongemoeid laten.
+   */
+  land?: string;
   /** Afzenderadres; de app eist exact order.email (identiteitsregel). */
   afzender: string;
 }

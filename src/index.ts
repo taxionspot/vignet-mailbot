@@ -23,6 +23,7 @@ import {
 } from "./match.js";
 import { magKlachtZelfBeantwoorden } from "./klacht.js";
 import { leesPaypalKwestie, type PaypalKwestie } from "./paypal-kwestie.js";
+import { landUitTekst } from "./landtekst.js";
 import { ApiFout } from "./api.js";
 import { haalOrder, schrijfLog } from "./api.js";
 import {
@@ -1121,21 +1122,36 @@ async function verwerkKentekenFout(
     const kandidaten = kandidaatPlaten(mail.tekstSchoon, [order.orderToken]).filter(
       (p) => p !== huidig
     );
-    if (kandidaten.length === 1) {
+    // Noemt de klant EEN ander land dan wat op de bestelling staat, dan is dat
+    // vaak de echte fout (05-08, VH-53HNS: Roemeens kenteken op Duitsland
+    // besteld). Het land mag ook zonder nieuwe plaat gecorrigeerd worden, want
+    // de plaat kan gewoon kloppen. Twee landen in een mail = geen mening.
+    const genoemdLand = landUitTekst(mail.tekstSchoon, order.plateCountry);
+    const nieuwePlaat = kandidaten.length === 1 ? kandidaten[0] : null;
+    if (nieuwePlaat || genoemdLand) {
       const res = await voerActieUit({
         actie: "kenteken_correctie",
         botMailId: mail.botMailId,
         orderToken: order.orderToken,
-        plaat: kandidaten[0],
+        // Zonder nieuwe plaat de bestaande meesturen: de app eist altijd een
+        // geldige plaat en wijzigt dan alleen het land.
+        plaat: nieuwePlaat ?? order.plateWeergave,
+        ...(genoemdLand ? { land: genoemdLand } : {}),
         afzender: mail.vanAdres,
       });
       if (res.ok && res.uitgevoerd) {
+        const wat = [
+          nieuwePlaat ? `kenteken naar ${nieuwePlaat}` : null,
+          genoemdLand ? `land naar ${genoemdLand}` : null,
+        ]
+          .filter(Boolean)
+          .join(" en ");
         const regel = basisLog(mail, classificatie, order);
         regel.actie = "kenteken_correctie";
         regel.bestemming = config.mappen.afgehandeld;
-        regel.melding = `kenteken gecorrigeerd naar ${kandidaten[0]}; de klant kreeg de correctiemail van de app`;
+        regel.melding = `${wat} gecorrigeerd; de klant kreeg de correctiemail van de app`;
         await schrijfLog(regel);
-        log.info(`Kenteken ${order.orderToken} door de bot gecorrigeerd naar ${kandidaten[0]}`);
+        log.info(`${order.orderToken}: door de bot ${wat} gecorrigeerd`);
         return { bestemming: config.mappen.afgehandeld, actie: "kenteken_correctie" };
       }
       log.warn(
