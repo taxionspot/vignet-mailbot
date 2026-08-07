@@ -23,7 +23,7 @@ import {
 } from "./match.js";
 import { magKlachtZelfBeantwoorden } from "./klacht.js";
 import { leesPaypalKwestie, type PaypalKwestie } from "./paypal-kwestie.js";
-import { landUitTekst } from "./landtekst.js";
+import { landUitTekst, bevestigtVoorstel } from "./landtekst.js";
 import { ApiFout } from "./api.js";
 import { haalOrder, schrijfLog } from "./api.js";
 import {
@@ -1128,7 +1128,25 @@ async function verwerkKentekenFout(
     // de plaat kan gewoon kloppen. Twee landen in een mail = geen mening.
     const genoemdLand = landUitTekst(mail.tekstSchoon, order.plateCountry);
     const nieuwePlaat = kandidaten.length === 1 ? kandidaten[0] : null;
-    if (nieuwePlaat || genoemdLand) {
+
+    // Staat er een CONCRETE ja-nee-vraag open over het registratieland, en
+    // bevestigt de klant die kort, dan is dat het antwoord (07-08-2026). Het
+    // voorgestelde land is niet geraden: de runner heeft zelf gemeten dat het
+    // portaal het kenteken daar WEL accepteert. Noemt de klant zelf een land,
+    // dan wint dat altijd; die heeft meer gezag dan onze meting.
+    const gevraagdLand = String(
+      (order as { inkoopProbleem?: { landBevestigingGevraagd?: string } }).inkoopProbleem
+        ?.landBevestigingGevraagd ?? ""
+    ).toUpperCase();
+    const bevestigdLand =
+      !genoemdLand && gevraagdLand && gevraagdLand !== String(order.plateCountry ?? "").toUpperCase()
+        ? bevestigtVoorstel(mail.tekstSchoon)
+          ? gevraagdLand
+          : null
+        : null;
+    const teZettenLand = genoemdLand ?? bevestigdLand;
+
+    if (nieuwePlaat || teZettenLand) {
       const res = await voerActieUit({
         actie: "kenteken_correctie",
         botMailId: mail.botMailId,
@@ -1136,13 +1154,13 @@ async function verwerkKentekenFout(
         // Zonder nieuwe plaat de bestaande meesturen: de app eist altijd een
         // geldige plaat en wijzigt dan alleen het land.
         plaat: nieuwePlaat ?? order.plateWeergave,
-        ...(genoemdLand ? { land: genoemdLand } : {}),
+        ...(teZettenLand ? { land: teZettenLand } : {}),
         afzender: mail.vanAdres,
       });
       if (res.ok && res.uitgevoerd) {
         const wat = [
           nieuwePlaat ? `kenteken naar ${nieuwePlaat}` : null,
-          genoemdLand ? `land naar ${genoemdLand}` : null,
+          teZettenLand ? `land naar ${teZettenLand}${bevestigdLand ? " (klant bevestigde ons voorstel)" : ""}` : null,
         ]
           .filter(Boolean)
           .join(" en ");

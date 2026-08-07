@@ -13,7 +13,7 @@
 import { beoordeelKlacht, magKlachtZelfBeantwoorden } from "../src/klacht.js";
 import { leesPaypalKwestie } from "../src/paypal-kwestie.js";
 import { lijktOpTypefout } from "../src/adres.js";
-import { landUitTekst } from "../src/landtekst.js";
+import { landUitTekst, bevestigtVoorstel } from "../src/landtekst.js";
 
 let goed = 0;
 let fout = 0;
@@ -169,6 +169,51 @@ console.log("\n6. Land uit het antwoord van de klant (05-08)");
   check(
     "losse lettergreep matcht niet (woordgrens)",
     landUitTekst("Ik heb de polenta al besteld.", "DE") === null
+  );
+}
+
+console.log("\n7. Klant bevestigt ons landvoorstel (07-08)");
+{
+  // Sinds 07-08 meet de runner zelf of het portaal het kenteken bij een ANDER
+  // land wel accepteert, en stelt de klant dan een concrete ja-nee-vraag. Dat
+  // lokt korte antwoorden uit waar geen kenteken en geen landnaam in staat.
+  check("kaal ja", bevestigtVoorstel("Ja"));
+  check("ja met punt", bevestigtVoorstel("ja."));
+  check("nederlands: klopt", bevestigtVoorstel("Dat klopt, bedankt!"));
+  check("nederlands: inderdaad", bevestigtVoorstel("Inderdaad, dank u wel"));
+  check("engels: yes", bevestigtVoorstel("Yes, that is correct."));
+  check("engels: confirmed", bevestigtVoorstel("Confirmed"));
+  check("duits: stimmt", bevestigtVoorstel("Ja, das stimmt."));
+  check("duits: richtig", bevestigtVoorstel("Richtig"));
+  check("frans: oui", bevestigtVoorstel("Oui, exact"));
+  check("italiaans: si", bevestigtVoorstel("Si, corretto"));
+  check("pools: tak", bevestigtVoorstel("Tak, zgadza sie"));
+  check("tsjechisch: ano", bevestigtVoorstel("Ano, spravne"));
+
+  // Alles wat GEEN duidelijke bevestiging is, mag niet doortellen: een fout hier
+  // levert een vignet op het verkeerde registratieland op, en dat is ongeldig.
+  check("ontkenning blokkeert", !bevestigtVoorstel("Nee, dat klopt niet."));
+  check("engelse ontkenning blokkeert", !bevestigtVoorstel("No, that is not correct"));
+  check("duitse ontkenning blokkeert", !bevestigtVoorstel("Nein, das stimmt nicht"));
+  check("wedervraag is geen bevestiging", !bevestigtVoorstel("Ja? Hoezo dan?"));
+  check("vraagteken blokkeert altijd", !bevestigtVoorstel("Klopt dat wel?"));
+  check("leeg is geen bevestiging", !bevestigtVoorstel(""));
+  check("alleen witruimte", !bevestigtVoorstel("   \n  "));
+  check(
+    "een heel verhaal is geen kort ja",
+    !bevestigtVoorstel(
+      "Ja ik heb uw mail ontvangen maar ik begrijp niet goed wat u bedoelt want ik heb de auto vorig jaar gekocht bij een dealer in een andere stad en toen stond er iets anders op de papieren dus ik weet het eigenlijk niet zeker meer"
+    )
+  );
+  check("losse lettergreep matcht niet", !bevestigtVoorstel("Ik ben in Jakarta geweest"));
+  check("woord met ja erin telt niet", !bevestigtVoorstel("Mijn jas is kwijt"));
+
+  // Noemt de klant zelf een land, dan wint dat boven onze bevestiging. Dat
+  // wordt in index.ts afgedwongen; hier controleren we dat beide signalen
+  // onafhankelijk werken.
+  check(
+    "een genoemd land blijft leidend",
+    landUitTekst("Ja klopt, de auto staat in Polen geregistreerd.", "DE") === "PL"
   );
 }
 

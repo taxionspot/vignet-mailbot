@@ -70,6 +70,62 @@ function normaliseer(tekst: string): string {
  * klant vaak in de trant van "niet Duitsland maar Roemenie", en dan willen we
  * dat niet als tweede treffer tellen.
  */
+// ---------------------------------------------------------------------------
+// Bevestigt de klant een voorstel dat WIJ hebben gedaan? (07-08-2026)
+//
+// AANLEIDING: sinds vandaag meet de runner zelf of het portaal het kenteken bij
+// een ANDER registratieland wel accepteert, en stelt de klant dan een concrete
+// vraag: "uw kenteken werkt als PL, klopt dat?". Dat lokt een KORT antwoord uit.
+// Schrijft de klant alleen "ja", dan staat daar geen kenteken en geen landnaam
+// in, en bleef de order staan. Juist bij de gerichte vraag werkte het dus niet.
+//
+// WAAROM DIT MAG, terwijl "nooit handelen op een kale tekstmatch" de huisregel
+// is: de context is hier hard. Er staat een specifieke ja-nee-vraag open, het
+// voorgestelde land is al DOOR HET PORTAAL gevalideerd, en de afzender is
+// aantoonbaar echt. Een "ja" kan hier maar op een ding slaan.
+//
+// Vier harde grenzen, want fout betekent een vignet op het verkeerde land:
+//   1. alleen bij een KORTE mail; staat er een heel verhaal, dan is er meer aan
+//      de hand en hoort een mens of het opstelmodel ernaar te kijken;
+//   2. een ontkenning ergens in de tekst blokkeert altijd;
+//   3. een vraagteken blokkeert: "ja? hoezo?" is geen bevestiging;
+//   4. noemt de klant zelf een land, dan wint dat (landUitTekst), niet dit.
+const BEVESTIGING = [
+  "ja", "jazeker", "klopt", "correct", "juist", "inderdaad", "akkoord", "prima", "goed zo",
+  "yes", "yep", "yeah", "thats right", "that is right", "confirmed", "i confirm", "right",
+  "richtig", "stimmt", "genau", "bestatige", "bestatigt", "jawohl",
+  "oui", "exact", "cest exact", "confirme",
+  "si", "esatto", "corretto", "confermo",
+  "tak", "zgadza sie", "potwierdzam",
+  "ano", "souhlasim", "spravne",
+  "da", "tocno", "potvrdujem",
+  "igen", "evet", "dogru",
+];
+
+const ONTKENNING = [
+  "nee", "neen", "niet", "geen", "onjuist", "klopt niet", "fout",
+  "no", "not", "isnt", "is not", "incorrect", "wrong",
+  "nein", "nicht", "kein", "falsch",
+  "non", "pas", "faux",
+  "nie", "nicht richtig", "sbagliato",
+  "ne", "nem", "hayir", "yanlis",
+];
+
+/** Ruwe lengtegrens: een bevestiging is kort. Meer tekst = meer aan de hand. */
+const MAX_WOORDEN_BEVESTIGING = 25;
+
+export function bevestigtVoorstel(tekst: string): boolean {
+  const plat = normaliseer(tekst);
+  if (!plat) return false;
+  const woorden = plat.split(/\s+/).filter(Boolean);
+  if (woorden.length === 0 || woorden.length > MAX_WOORDEN_BEVESTIGING) return false;
+  // Een wedervraag is geen bevestiging.
+  if (tekst.includes("?")) return false;
+  const omringd = ` ${plat} `;
+  if (ONTKENNING.some((n) => omringd.includes(` ${n} `))) return false;
+  return BEVESTIGING.some((j) => omringd.includes(` ${j} `));
+}
+
 export function landUitTekst(tekst: string, negeer?: string): string | null {
   const plat = ` ${normaliseer(tekst)} `;
   if (plat.trim() === "") return null;

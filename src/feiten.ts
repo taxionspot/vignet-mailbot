@@ -242,6 +242,13 @@ export function bouwFeitenBlok(feiten: OrderFeiten | null | undefined): FeitenBl
   // een wachtrij-verhaal dat niet klopt.
   const inkoopProbleemReden = leesTekst(kern, "inkoopProbleem.reden");
   const inkoopVerificatieMail = Boolean(leesTekst(kern, "inkoopProbleem.verificatieMailAt"));
+  // Er staat een CONCRETE ja-nee-vraag open (07-08-2026): de runner heeft zelf
+  // gemeten dat het portaal het kenteken bij DIT land wel accepteert, en we
+  // hebben de klant gevraagd dat te bevestigen. Zonder deze feiten ziet de bot
+  // alleen een kaal "ja" in de antwoordmail, vindt daar geen kenteken en geen
+  // landnaam in, en blijft de order staan.
+  const landBevestigingGevraagd = leesTekst(kern, "inkoopProbleem.landBevestigingGevraagd").toUpperCase();
+  const landNuOpDeOrder = leesTekst(kern, "inkoopProbleem.landNuOpDeOrder").toUpperCase();
 
   // Al uitgevoerde terugbetaling en de akkoorden bij het bestellen (04-08).
   // Hiermee kan de bot een vraag over een al geannuleerde bestelling en een
@@ -297,6 +304,12 @@ export function bouwFeitenBlok(feiten: OrderFeiten | null | undefined): FeitenBl
     zet(
       "Akkoord bij het bestellen",
       `Op ${toestemmingOp} heeft de klant zelf twee verplichte verklaringen aangevinkt: de opdracht om het vignet namens hem te registreren, en het verzoek om direct met de uitvoering te beginnen waarbij het herroepingsrecht vervalt zodra het vignet geregistreerd is. Gebruik dit ALLEEN als de klant om terugbetaling of herroeping vraagt, en breng het rustig en feitelijk, nooit als verwijt.`
+    );
+  }
+  if (landBevestigingGevraagd) {
+    zet(
+      "Openstaande vraag aan de klant",
+      `wij hebben gemeten dat het officiele portaal dit kenteken WEL accepteert als kenteken uit ${landBevestigingGevraagd}, maar niet als kenteken uit ${landNuOpDeOrder || "het opgegeven land"}. Wij hebben de klant gevraagd te bevestigen dat zijn voertuig in ${landBevestigingGevraagd} geregistreerd staat. Bevestigt hij dat, ook kort met alleen "ja" of "klopt", dan is dat het antwoord op DEZE vraag en zetten wij het land om naar ${landBevestigingGevraagd}. Zegt hij nee, of noemt hij een ander land, dan volg je dat.`
     );
   }
   if (inkoopProbleemReden === "kenteken_geweigerd") {
