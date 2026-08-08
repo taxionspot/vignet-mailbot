@@ -51,7 +51,7 @@ const LANDNAMEN: Record<string, string[]> = {
 };
 
 /** Kleine letters, accenten weg, alleen letters en spaties over. */
-function normaliseer(tekst: string): string {
+export function normaliseer(tekst: string): string {
   return String(tekst ?? "")
     .toLowerCase()
     .normalize("NFD")

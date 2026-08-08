@@ -24,8 +24,9 @@ import {
 import { magKlachtZelfBeantwoorden } from "./klacht.js";
 import { leesPaypalKwestie, type PaypalKwestie } from "./paypal-kwestie.js";
 import { landUitTekst, bevestigtVoorstel } from "./landtekst.js";
+import { isAfmeldVerzoek } from "./afmelden.js";
 import { ApiFout } from "./api.js";
-import { haalOrder, schrijfLog } from "./api.js";
+import { haalOrder, schrijfLog, stuurAfmelden } from "./api.js";
 import {
   lusBeveiliging,
   machinemeldingReden,
@@ -552,6 +553,26 @@ async function verwerkMail(mail: InkomendeMail): Promise<VerwerkUitkomst> {
   //   - ordergebonden vraag -> eerst zelf om ordernummer of kenteken vragen.
   // Vanaf hier narrowt de vergelijking order naar OrderFeiten voor de rest.
   if (order === null) {
+    // Afmeld- of gegevensverwijderverzoek van een LEAD (08-08): "Abmelden.
+    // Bitte entfernen Sie meine Daten." De app verwijdert de leadgegevens,
+    // waarmee ook de afhakermails stoppen; dat is precies wat er gevraagd
+    // wordt, dus geen escalatie en geen antwoordmail. Alleen bij een
+    // geauthenticeerde afzender (op dit signaal worden gegevens verwijderd) en
+    // de app weigert zelf zodra er toch een order op het adres blijkt te staan.
+    if (mail.afzenderGeauthenticeerd && isAfmeldVerzoek(mail.tekstSchoon)) {
+      const res = await stuurAfmelden(mail.vanAdres);
+      if (res.ok) {
+        const regel = basisLog(mail, classificatie, null);
+        regel.actie = "afmelden";
+        regel.bestemming = config.mappen.afgehandeld;
+        regel.melding = `afgemeld: ${res.verwijderd} lead(s) verwijderd, geen afhakermails meer`;
+        await schrijfLog(regel);
+        log.info(`Afmeldverzoek van ${mail.vanAdres} zelf afgehandeld (${res.verwijderd} leads weg)`);
+        return { bestemming: config.mappen.afgehandeld, actie: "afmelden" };
+      }
+      // heeft_order of storing: gewoon de bestaande weg (doorvragen/escaleren).
+      log.info(`Afmeldverzoek van ${mail.vanAdres} niet zelf afgehandeld (${res.fout ?? "storing"}), gewone flow`);
+    }
     if (!(ORDER_GEBONDEN_INTENTS as readonly Intent[]).includes(intent)) {
       return await verwerkAlgemeneVraag(mail, classificatie, intent);
     }

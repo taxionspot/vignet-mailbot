@@ -231,6 +231,34 @@ export async function stuurActie(opdracht: ActieOpdracht): Promise<ActieResultaa
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/bot/actie {actie: "afmelden"}
+// ---------------------------------------------------------------------------
+
+/**
+ * Afmeld- of gegevensverwijderverzoek van iemand ZONDER order: de app verwijdert
+ * de leadgegevens voor dit adres, waarmee ook de afhakermails stoppen. De app
+ * weigert met "heeft_order" als er WEL een order op het adres staat; dan hoort
+ * de mail alsnog bij een mens (bewaarplicht, en annuleren is een geldbeslissing).
+ */
+export async function stuurAfmelden(
+  afzender: string
+): Promise<{ ok: boolean; verwijderd: number; fout?: string }> {
+  try {
+    const { body } = await doeVerzoek<{ ok: boolean; verwijderd?: number; error?: string }>(
+      "POST",
+      "/api/bot/actie",
+      { body: { actie: "afmelden", afzender }, timeoutMs: config.app.httpTimeoutMs }
+    );
+    return { ok: body.ok === true, verwijderd: body.verwijderd ?? 0, ...(body.error ? { fout: body.error } : {}) };
+  } catch (err) {
+    if (err instanceof ApiFout) {
+      return { ok: false, verwijderd: 0, fout: err.foutcode ?? "geweigerd" };
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/bot/leervoorbeelden
 // ---------------------------------------------------------------------------
 

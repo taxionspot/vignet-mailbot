@@ -14,6 +14,7 @@ import { beoordeelKlacht, magKlachtZelfBeantwoorden } from "../src/klacht.js";
 import { leesPaypalKwestie } from "../src/paypal-kwestie.js";
 import { lijktOpTypefout } from "../src/adres.js";
 import { landUitTekst, bevestigtVoorstel } from "../src/landtekst.js";
+import { isAfmeldVerzoek } from "../src/afmelden.js";
 
 let goed = 0;
 let fout = 0;
@@ -215,6 +216,33 @@ console.log("\n7. Klant bevestigt ons landvoorstel (07-08)");
     "een genoemd land blijft leidend",
     landUitTekst("Ja klopt, de auto staat in Polen geregistreerd.", "DE") === "PL"
   );
+}
+
+console.log("\n8. Afmeld- of gegevensverwijderverzoek (08-08)");
+{
+  // Het echte bericht dat de aanleiding was (julia.kiesshauer, 07-08).
+  check(
+    "de echte aanleiding wordt herkend",
+    isAfmeldVerzoek("Bitte entfernen Sie meine Daten. Die Vignette wird nicht benötigt.\nMfG")
+  );
+  check("kaal Abmelden (onderwerpregel)", isAfmeldVerzoek("Abmelden"));
+  check("engels: unsubscribe", isAfmeldVerzoek("Unsubscribe please"));
+  check("engels: delete my data", isAfmeldVerzoek("Please delete my data, I no longer need this."));
+  check("nederlands: verwijder mijn gegevens", isAfmeldVerzoek("Verwijder mijn gegevens a.u.b."));
+  check("nederlands: geen mails meer", isAfmeldVerzoek("Ik wil geen mails meer ontvangen"));
+  check("duits: keine Mails mehr", isAfmeldVerzoek("Bitte keine Mails mehr an mich."));
+  check("frans: supprimez mes donnees", isAfmeldVerzoek("Supprimez mes données s'il vous plaît"));
+
+  // Wat er NIET op mag aanslaan: op dit signaal worden gegevens verwijderd.
+  check("alleen 'niet nodig' is geen afmelding", !isAfmeldVerzoek("Die Vignette wird nicht benötigt."));
+  check("annuleringsverzoek is geen afmelding", !isAfmeldVerzoek("Ich möchte meine Bestellung stornieren und mein Geld zurück."));
+  check("statusvraag is geen afmelding", !isAfmeldVerzoek("Wo bleibt mein Vignette? Ich habe bezahlt."));
+  check("lange mail valt af, ook met het woord erin", !isAfmeldVerzoek(
+    "Ik heb een vraag over mijn bestelling van vorige week. Ik wil me niet afmelden maar ik begrijp de mail niet goed. " +
+    "Er stond iets over een kenteken en een startdatum en ik weet niet of dat klopt want mijn man heeft de auto " +
+    "vorige maand verkocht en we hebben nu een andere auto met een ander kenteken en andere papieren erbij gekregen."
+  ));
+  check("lege tekst", !isAfmeldVerzoek(""));
 }
 
 console.log(`\n==== ${goed} geslaagd, ${fout} gefaald ====`);

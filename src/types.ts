@@ -406,7 +406,10 @@ export type UitvoerActie =
   | "resend_bewijs"
   | "kenteken_correctie"
   | "antwoord_sturen"
-  | "escalatie_sturen";
+  | "escalatie_sturen"
+  // Afmeld- of gegevensverwijderverzoek van een lead zonder order (08-08):
+  // de app verwijdert de leadgegevens, de afhakermails stoppen.
+  | "afmelden";
 
 /** Wat er in de MailBotLog komt te staan. "geen" = alleen gearchiveerd. */
 export type GelogdeActie = UitvoerActie | "geen";
